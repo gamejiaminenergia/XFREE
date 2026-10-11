@@ -51,6 +51,9 @@ class PlayerSnapshot:
     weapon_ready: bool
     keys: int
     damage_since_last: int
+    # The engine's own maximum, so a balance mod that raises it still draws a
+    # meaningful bar. Vanilla Duum reports 100; the optional mod reports 300.
+    max_health: int = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -1027,6 +1030,7 @@ class SnapshotBuilder:
             weapon_ready=self.app.now >= self.app.refire_at,
             keys=int(self.app.keys),
             damage_since_last=damage,
+            max_health=int(getattr(self.engine, "PLAYER_MAXHEALTH", 100) or 100),
         )
         episode = EpisodeSnapshot(
             game_time=round(float(self.app.now), 6),

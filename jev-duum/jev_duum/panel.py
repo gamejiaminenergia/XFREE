@@ -902,7 +902,14 @@ class Dashboard:
     def update(self, *, pilot, snapshot, decision, controls, worker, stale, error, log_stats=None):
         phase = (snapshot.tick // 4) % 2
         player = snapshot.player
-        self.health.set(player.health, 100, warn_at=70, crit_at=35, phase=phase)
+        max_health = max(1, int(getattr(player, "max_health", 100) or 100))
+        self.health.set(
+            player.health,
+            max_health,
+            warn_at=int(max_health * 0.70),
+            crit_at=int(max_health * 0.35),
+            phase=phase,
+        )
         self.armor.set(player.armor, 200, warn_at=100, crit_at=40, phase=phase)
         ammo = player.ammo
         self.ammo.set(

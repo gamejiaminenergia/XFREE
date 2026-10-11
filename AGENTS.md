@@ -10,12 +10,15 @@
 - `map/` — schematic E1M1 knowledge (`sense.py`, `heuristics.py`,
   `doom_map.svg`), the source of truth, vendored into `jev_duum/_map/`.
 - `jev-log/` + `docker-compose.yml` — optional MongoDB/Express audit log.
+- `mods/balance.py` — reproducible, reversible engine patch (3× health, 2×
+  damage) applied to a pinned checkout; never committed into the engine.
 - `docs/` — plans and measured results. `duum/` is the pinned external engine
   (MPL-2.0, git-ignored, never edited).
 
 ## Build, Test, and Development Commands
 
 ```bash
+./main.sh                                       # one command: engine + mod + game
 bash scripts/setup_duum.sh                      # clone Duum at the pinned commit
 cd jev-duum && uv sync                          # stdlib + Duum only
 uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)

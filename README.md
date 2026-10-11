@@ -41,6 +41,16 @@ Duum itself is **not** vendored — it stays an external, pinned dependency.
 
 ## Quickstart
 
+The short way — one command does everything below (finds or creates the pinned
+engine, syncs the environment, applies the balance mod and launches):
+
+```bash
+./main.sh                 # window + inspector; --windowed for a normal window
+./main.sh --headless --ticks 600
+```
+
+Or step by step:
+
 ```bash
 git clone https://github.com/<you>/<repo>.git
 cd <repo>
@@ -59,6 +69,11 @@ cd jev-duum && uv sync
 bash play.sh                     # window + decision inspector
 bash play.sh --headless          # no window, JSON summary
 ```
+
+`./main.sh` also applies the optional **balance mod** (`mods/balance.py`: 3×
+player health, 2× player damage) to the engine checkout it uses — idempotent, and
+reversible with `python3 mods/balance.py --duum <path> --revert`. Start with
+`JEV_VANILLA=1 ./main.sh` (or plain `play.sh`) to keep the game original.
 
 `play.sh` reads `jev-duum/.env` for you; an exported `TYPESAFE_API_KEY` always
 wins. The bundled `freedoom1.wad` (Freedoom Phase 1, BSD-3-Clause) is validated
