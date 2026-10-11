@@ -30,4 +30,8 @@ video/**/*.mkv
 video/**/*.mov
 video/**/*.webm
 video/**/*.gif
+# La ficha .json describe un vídeo que no se versiona, así que tampoco ella:
+# si el clip vive solo en local, una ficha en git apunta a un fichero ausente.
+# El índice de clips es video/README.md.
+video/**/*.json
 video/.ffmpeg-*.log

@@ -99,4 +99,5 @@ el mismo nombre y extensión `.json`:
 
 | Clip | Tipo | Pilot | Prompt | Resolución | Duración | Códec |
 |---|---|---|---|---|---|---|
+| `partidas/2026-10-11_095332_partida_jev-assisted_v3w_1920x1080.mp4` | partida | jev-assisted | v3w | 1920×1080 | 1:00 | h264_nvenc |
 | `partidas/2026-10-11_094838_partida_jev-assisted_v3w_1920x1080.mp4` | partida | jev-assisted | v3w | 1920×1080 | 0:20 | h264_nvenc |
