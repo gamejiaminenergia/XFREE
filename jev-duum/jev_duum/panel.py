@@ -70,6 +70,8 @@ EVENT_H = 145
 EVENT_ROWS = 5
 # Fixed heights of the centre column's sections.  Only the decision box takes
 # the slack of the window; the other three are the same size in every state.
+# The threat cell: one width for the diagram's key, whatever the numbers are.
+THREAT_CELL = 34
 GUARD_H = 132
 WHY_H = 106
 STRATEGY_H = 128
@@ -192,13 +194,20 @@ class Panel:
         head = tkinter.Frame(self.frame, bg=PANEL)
         head.pack(fill="x", padx=8, pady=(5, 0))
         self.header = head
+        # Grid, not pack: the heading's cell takes the slack (weight 1) and the
+        # state block's cell keeps its exact request.  Packed side by side, a
+        # longer heading squeezed the block and the block's width followed the
+        # data, which is exactly what the fixed widths everywhere else prevent.
+        head.grid_columnconfigure(0, weight=1)
         self.title = tkinter.Label(
             head, text=title.upper(), bg=PANEL, fg=TITLE,
             font=(FONTS["mono"], 10, "bold"), anchor="w",
         )
-        self.title.pack(side="left")
+        self.title.grid(row=0, column=0, sticky="ew")
         self.flag_holder = tkinter.Frame(head, bg=PANEL)
-        self.flag_holder.pack(side="right")
+        # Column 1 is where a panel may place a middle note; the state
+        # block always lives in the last column.
+        self.flag_holder.grid(row=0, column=2, sticky="e")
         tkinter.Frame(self.frame, bg=RULE, height=1).pack(fill="x", padx=8, pady=(4, 0))
         self.body = tkinter.Frame(self.frame, bg=PANEL)
         self.body.pack(fill="both", expand=expand, padx=8, pady=(5, 7))
@@ -275,7 +284,7 @@ class Bar:
         self.fill = self.canvas.create_rectangle(0, 0, 0, height, fill=VALUE, outline="")
         self.limit = self.canvas.create_line(0, 0, 0, height, fill=STATIC)
         self.value = tkinter.Label(
-            self.frame, text="—", width=9, anchor="e", bg=PANEL, fg=VALUE,
+            self.frame, text="—", width=11, anchor="e", bg=PANEL, fg=VALUE,
             font=(FONTS["mono"], 11, "bold"),
         )
         self.value.pack(side="left")
@@ -330,8 +339,11 @@ class DecidRow:
             font=(FONTS["mono"], 9),
         )
         self.title.pack(side="left")
+        # Fixed width: the biggest word on screen must not resize its box when
+        # the model changes its mind between `right` and `strafe_right`.
         self.choice = tkinter.Label(
-            head, text="—", bg=PANEL, fg=VALUE, font=(FONTS["mono"], 20, "bold")
+            head, text="—", width=13, anchor="w", bg=PANEL, fg=VALUE,
+            font=(FONTS["mono"], 20, "bold"),
         )
         self.choice.pack(side="left", padx=(4, 0))
         self.conf = Flag(tkinter, head, width=10)
@@ -342,8 +354,8 @@ class DecidRow:
         self.canvas.pack(fill="x", pady=(3, 2))
         self.canvas.bind("<Configure>", self._on_configure)
         self.breakdown = tkinter.Label(
-            self.frame, text="", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9),
-            anchor="w", justify="left",
+            self.frame, text="", width=44, anchor="w", bg=PANEL, fg=STATIC,
+            font=(FONTS["mono"], 9),
         )
         self.breakdown.pack(fill="x")
         self._values: dict = {}
@@ -374,7 +386,9 @@ class DecidRow:
         others = "  ".join(
             f"{name} {value:.2f}" for name, value in self._values.items() if name != best
         )
-        self.breakdown.configure(text=f"ALTERNATIVAS   {others}" if others else "")
+        self.breakdown.configure(
+            text=_clip(f"ALTERNATIVAS   {others}", 44) if others else ""
+        )
         self._draw()
 
     def reset(self):
@@ -537,6 +551,15 @@ def _clip_to_cell(widget, text):
     return _clip(text, width)
 
 
+def _threat_block(lines) -> str:
+    """Exactly three lines of one fixed cell, whatever the numbers say."""
+
+    lines = [str(line) for line in lines][:3] or ["sin amenazas a la vista"]
+    while len(lines) < 3:
+        lines.append("")
+    return "\n".join(f"{_clip(line, THREAT_CELL):<{THREAT_CELL}}" for line in lines)
+
+
 def _guard_motive(events) -> str:
     """One line explaining a decision's intervention, for the event list."""
 
@@ -546,7 +569,7 @@ def _guard_motive(events) -> str:
     text = "   ".join(parts)
     if len(events) > 1:
         text = f"×{len(events)}  " + text
-    return text if len(text) <= 72 else text[:71] + "…"
+    return text if len(text) <= 64 else text[:63] + "…"
 
 
 def _target_text(target) -> str:
@@ -792,11 +815,13 @@ class Dashboard:
             left, text="JEV·DUUM", bg=PANEL, fg=TITLE, font=(FONTS["mono"], 12, "bold")
         ).pack(side="left")
         self.map_label = tk.Label(
-            left, text="", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 10)
+            left, text="", width=9, anchor="w", bg=PANEL, fg=STATIC,
+            font=(FONTS["mono"], 10),
         )
         self.map_label.pack(side="left", padx=(8, 0))
         self.live_label = tk.Label(
-            left, text="", bg=PANEL, fg=VALUE, font=(FONTS["mono"], 10)
+            left, text="", width=34, anchor="w", bg=PANEL, fg=VALUE,
+            font=(FONTS["mono"], 10),
         )
         self.live_label.pack(side="left", padx=(12, 0))
 
@@ -805,7 +830,8 @@ class Dashboard:
         self._header_button(right, "F11", self._toggle_fullscreen)
         self._header_button(right, "CERRAR", self._close_window, danger=True)
         self.alarm_count = tk.Label(
-            right, text="", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 10, "bold")
+            right, text="", width=10, anchor="e", bg=PANEL, fg=STATIC,
+            font=(FONTS["mono"], 10, "bold"),
         )
         self.alarm_count.pack(side="right", padx=(10, 0))
         self.link_flag = Flag(tk, right, width=15)
@@ -904,7 +930,7 @@ class Dashboard:
         # One clipped line per axis: a wrapped value would change the box.
         self._why_table, self.observations = _table(
             tk, why.body, [(title, axis) for axis, title, _ in AXES],
-            size=9, value_width=44,
+            size=9, value_width=42,
         )
 
         strategy = Panel(tk, self.center, "Estrategia")
@@ -934,19 +960,23 @@ class Dashboard:
             cell = tk.Frame(counters, bg=PANEL, highlightbackground=RULE, highlightthickness=1)
             cell.grid(row=0, column=column, sticky="nsew", padx=(0, 5))
             counters.grid_columnconfigure(column, weight=1)
-            value = tk.Label(cell, text="—", bg=PANEL, fg=VALUE, font=(FONTS["mono"], 11, "bold"))
+            value = tk.Label(
+                cell, text="—", width=9, anchor="w", bg=PANEL, fg=VALUE,
+                font=(FONTS["mono"], 11, "bold"),
+            )
             value.pack(anchor="w", padx=6, pady=(4, 0))
             # The sample count travels with the percentile: a p95 over one
             # measurement is that measurement, and it used to look like a bug.
             label = tk.Label(
-                cell, text=f"{caption} {unit}".strip(), bg=PANEL, fg=STATIC,
-                font=(FONTS["mono"], 9),
+                cell, text=f"{caption} {unit}".strip(), width=18, anchor="w",
+                bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9),
             )
             label.pack(anchor="w", padx=6, pady=(0, 4))
             self._tiles[key] = value
             self._tile_captions[key] = (label, f"{caption} {unit}".strip())
         self.cost_label = tk.Label(
-            self.right, text="", anchor="w", bg=BG, fg=STATIC, font=(FONTS["mono"], 9)
+            self.right, text="", width=30, anchor="w", bg=BG, fg=STATIC,
+            font=(FONTS["mono"], 9),
         )
         self.cost_label.pack(fill="x", pady=(0, 6))
 
@@ -1019,10 +1049,10 @@ class Dashboard:
         # The loop's own telemetry sits in the header's blank right half rather
         # than on a line of its own.
         self._event_note = tk.Label(
-            panel.header, text="", anchor="e", bg=PANEL, fg=STATIC,
+            panel.header, text="", width=52, anchor="e", bg=PANEL, fg=STATIC,
             font=(FONTS["mono"], 9),
         )
-        self._event_note.pack(side="right", padx=(0, 10))
+        self._event_note.grid(row=0, column=1, sticky="e", padx=(0, 10))
         # ``#  TICK  MOV  APU  ACC  OBJ  CONF  ms  ESTADO`` are fixed width;
         # ``MOTIVO`` is the column that grows with the window.
         self._event_columns = (
@@ -1241,7 +1271,7 @@ class Dashboard:
                 font=(FONTS["mono"], 9, "bold"), anchor="w",
             ).pack(side="left", padx=(0, 6))
             self.tk.Label(
-                row, text=_clip(event.reason, 44),
+                row, text=_clip(event.reason, 40),
                 anchor="w", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9),
             ).pack(side="left")
 
@@ -1278,8 +1308,8 @@ class Dashboard:
         if readout is None or not readout.available:
             for key, widget in self.world_fields.items():
                 self._label(f"world-{key}", widget, "sin dato", fg=OFF)
-            self._label("world-threats", self.world_threats, "modelo del mundo no disponible",
-                        fg=OFF)
+            self._label("world-threats", self.world_threats,
+                        _threat_block(["sin modelo del mundo"]), fg=OFF)
             return
         route = f"{readout.route_steps} salas"
         if readout.route_rooms:
@@ -1297,18 +1327,16 @@ class Dashboard:
         }
         for key, value in fields.items():
             self._label(f"world-{key}", self.world_fields[key], value, fg=VALUE)
+        # Every threat line is formatted to a fixed width, then clipped and
+        # padded to the same cell: the diagram beside it is sized by this box,
+        # so a wide number used to shrink the map.
         lines = [
-            f"{threat['bearing_degrees']:>6.0f}°  {threat['distance_px']:>5.0f}px"
-            f"  AMENAZA {threat['threat_score']:>4}  "
-            f"{'LOS' if threat['line_of_sight'] else 'SIN LOS'}"
+            f"{threat['bearing_degrees']:>6.0f}° {threat['distance_px']:>6.0f}px"
+            f"  AMEN {threat['threat_score']:>4.2f}"
+            f"  {'LOS' if threat['line_of_sight'] else 'SIN LOS'}"
             for threat in readout.top_threats[:3]
         ]
-        if not lines:
-            lines = ["sin amenazas a la vista"]
-        while len(lines) < 3:
-            lines.append("")
-        self._label("world-threats", self.world_threats,
-                    "\n".join(f"{line:<32}" for line in lines), fg=STATIC)
+        self._label("world-threats", self.world_threats, _threat_block(lines), fg=STATIC)
 
     # -- counters and accounting ---------------------------------------------
     def _account(self, decision):

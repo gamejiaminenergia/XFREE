@@ -64,7 +64,18 @@ Reglas de uso:
    `MEDIA 0.60`, `SALUD CRÍTICA`).
 4. `INFO` (amarillo) queda para **referencias** (límites y unidades), no para
    texto corriente. Hoy sólo lo usa la marca de límite de las barras.
-5. Contraste mínimo verificado sobre negro: texto estático 9.7:1, `OFF` 5.3:1,
+5. **Ninguna caja cambia de tamaño con el dato.** Ni panel, ni sección, ni
+   celda, ni bloque de estado: **ancho y alto invariantes**. Una caja que crece
+   desplaza a sus vecinas y obliga al operador a rebuscar la información. Lo que
+   no cabe en la celda **se recorta** (el valor, nunca la caja) y el texto se
+   escribe con formato de ancho fijo. Sólo dos anchos son flexibles, y por
+   diseño: el **unifilar** (se queda con lo que sobra) y la columna **MOTIVO**
+   de la lista de eventos.
+   El invariante está codificado en `jev-duum/tests/test_jev_hmi.py`: recorre
+   estados hostiles (valores larguísimos, listas vacías, sin modelo, obsoleto) y
+   compara la geometría de todas las cajas. **Si ese test falla, la interfaz
+   está rota**, aunque se vea bien.
+6. Contraste mínimo verificado sobre negro: texto estático 9.7:1, `OFF` 5.3:1,
    rojo 5.3:1, ámbar 10.6:1, verde 15.3:1. El relleno de una barra es blanco
    (21:1); el carril no lleva información.
 
@@ -124,7 +135,11 @@ No entra en esta pantalla, y no hace falta justificarlo cada vez:
   glifos Unicode haciendo de icono (los botones dicen `F11` y `CERRAR`);
 - duplicar un dato en dos sitios: cada dato tiene **una** casa;
 - texto por debajo de 9 pt, o cualquier texto con menos de 4.5:1;
-- un color fuera de la tabla de §3, o un color de dato usado como cromo.
+- un color fuera de la tabla de §3, o un color de dato usado como cromo;
+- **un panel, sección, celda o bloque de estado cuyo ancho o alto dependa del
+  dato**: eso incluye una etiqueta sin `width` que crezca con su texto, un
+  valor sin recortar, una línea extra que empuje lo de abajo, o un texto que se
+  envuelva en un número variable de líneas.
 
 ## 7. Cómo se cambia
 
