@@ -115,6 +115,8 @@ Launch it with `./main.sh`.
 ```bash
 cd jev-duum
 python3 tools/preview_panel.py             # offline shots of the fixed screen (no tabs)
+python3 tools/dump_panel_tree.py           # deterministic widget-tree dump (refactor gate)
+python3 tools/record_headless.py --fake --seconds 10 --out /tmp/clip.mp4   # video, no X
 python3 tools/decision_stage_mockup.py     # the design mockup
 ```
 
@@ -131,6 +133,12 @@ save the PNG.
 ```bash
 # Jev plays, windowed and fullscreen by default (--windowed for a normal window)
 uv run --no-sync jev-duum --pilot jev-assisted
+
+# The same panel in the terminal: headless engine, no X, works over SSH
+uv run --no-sync jev-duum --pilot jev-assisted --tui
+
+# The same session over HTTP + WebSocket, with the panel in a browser
+cd ../jev-service && uv sync && uv run --no-sync jev-service --fake
 
 # Same, without the world-model block, to A/B it
 uv run --no-sync jev-duum --pilot jev-assisted --no-world-model --headless --ticks 600
@@ -187,7 +195,7 @@ never raises. `JEV_NO_LOG=1` disables it, `JEV_LOG_URL` points elsewhere.
 ```bash
 cd jev-duum
 uv run --no-sync ruff check jev_duum tests
-uv run --no-sync python -m pytest -q          # 151 pass, 5 skipped (live API)
+uv run --no-sync python -m pytest -q          # 219 pass, 5 skipped (live API)
 ```
 
 The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
@@ -204,6 +212,11 @@ The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
   redesign, fullscreen reflow and request/response detail.
 - [`DESIGN.md`](DESIGN.md) — **current**: the HMI style guide (transmission
   SCADA discipline) that `panel/`, `theme.py` and `telemetry/` implement.
+- [`docs/BACKEND.md`](docs/BACKEND.md) — **current**: the backend/frontend
+  split, the terminal UI (`--tui`), the HTTP service and recording from the
+  engine's own frames.
+- [`docs/REFACTOR.md`](docs/REFACTOR.md) — the MVC/SOLID refactor of the big
+  modules into packages, its frozen contracts and how to revert it.
 - [`docs/AI_DECISION_STAGE_PLAN.md`](docs/AI_DECISION_STAGE_PLAN.md) — the
   decision-first layout for a live AI talk (now the single window).
 - [`jev-duum/docs/JEV_INTEGRATION.md`](jev-duum/docs/JEV_INTEGRATION.md) —

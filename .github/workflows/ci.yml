@@ -36,8 +36,34 @@ jobs:
 
       - name: Lint
         working-directory: jev-duum
-        run: uv run --no-sync ruff check jev_duum tests
+        run: uv run --no-sync ruff check jev_duum tests tools
 
       - name: Tests
         working-directory: jev-duum
         run: uv run --no-sync python -m pytest -q
+
+  service:
+    # The HTTP/WebSocket frontend. It fabricates its frames, so it needs neither
+    # the engine nor a display; only the pilot's source, which is in this repo.
+    name: jev-service lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync the environment
+        working-directory: jev-service
+        run: uv sync --frozen
+
+      - name: Lint
+        working-directory: jev-service
+        run: uv run --no-sync ruff check jev_service tests
+
+      - name: Tests
+        working-directory: jev-service
+        run: uv run --no-sync pytest -q

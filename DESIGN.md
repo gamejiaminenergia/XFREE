@@ -9,6 +9,10 @@ Implementación: `jev-duum/jev_duum/panel/` (paleta, widgets, zonas y compositor
 y `jev-duum/jev_duum/overlays/` (unifilar y banda de estado del canvas).
 Ambos toman sus colores de `jev-duum/jev_duum/theme.py`, la única casa de la
 paleta (la de la pantalla y la del unifilar).
+**La misma guía gobierna los otros dos frontends**: la TUI de la terminal
+(`jev_duum/tui/`, `--tui`), que traduce la paleta a ANSI y repite la rejilla
+fija, y la página del servicio (`jev-service/web/`), que recibe las variables
+CSS generadas desde `theme.py`. No hay una segunda guía para cada medio.
 Verificación visual offline, sin gastar API: `jev-duum/tools/preview_panel.py`;
 equivalencia determinista: `jev-duum/tools/dump_panel_tree.py`.
 
@@ -217,7 +221,8 @@ No entra en esta pantalla, y no hace falta justificarlo cada vez:
 ## 7. Cómo se cambia
 
 1. Se cambia esta guía (qué se quiere decir y por qué).
-2. Se cambia `panel/` / `overlays/` para que la cumpla.
+2. Se cambia `panel/` / `overlays/` para que la cumpla (y, si toca la
+   presentación, también `tui/` y `jev-service/web/`).
 3. Se renderiza con `tools/preview_panel.py` (offline, 0 $) y se miran las
    capturas de `artifacts/ui-audit/`: cinco estados, `01-en-vivo` a
    `05-sin-modelo`.

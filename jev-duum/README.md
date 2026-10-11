@@ -26,6 +26,9 @@ From this directory:
 ```bash
 uv sync
 uv run --no-sync jev-duum --pilot jev-assisted
+
+# The same panel in the terminal: headless engine, no window, works over SSH
+uv run --no-sync jev-duum --pilot jev-assisted --tui
 ```
 
 Or through the wrapper, which reads `.env` for you:
@@ -33,7 +36,13 @@ Or through the wrapper, which reads `.env` for you:
 ```bash
 bash play.sh              # windowed game with the decision panel
 bash play.sh --headless   # no window, JSON summary
+play.sh --tui             # the panel in the terminal, still headless
 ```
+
+The terminal UI is part of this package (`jev_duum/tui/`, standard-library
+`curses`); the HTTP/WebSocket frontend lives next door in
+[`../jev-service/`](../jev-service/).  The Tk window, the headless runs and the
+recordings are unchanged.
 
 The bundled Freedoom Phase 1 IWAD (`freedoom1.wad`) is the default; it is
 validated by header and SHA-256 on every run. Pass `--wad /path/to/file.wad`
@@ -190,6 +199,13 @@ curl -s "localhost:3000/calls/<id>"                         # one complete call
 - The Tk window is presentation only (`panel/`, `theme.py`, `telemetry/`):
   it reads snapshots and decisions and never touches the 60 Hz loop; its style
   guide is [`../DESIGN.md`](../DESIGN.md).
+- The backend is a module, not the window: `session/` owns the engine, the
+  snapshot and the decision worker, and publishes one frame per tick. The Tk
+  panel, the terminal UI (`--tui`) and the HTTP service are frontends over it,
+  and none of them advances the engine. See [`../docs/BACKEND.md`](../docs/BACKEND.md).
+- This package keeps a single dependency (`duum`): a web framework or a terminal
+  toolkit would live elsewhere — the service in `jev-service/`, the TUI on
+  `curses` from the standard library.
 - Raw model proposals and deterministic assistance remain separately recorded.
 - Assisted play prioritizes critical health/ammo, restores a usable gun after
   collecting ammunition, and rejects melee targets blocked by walls or height.

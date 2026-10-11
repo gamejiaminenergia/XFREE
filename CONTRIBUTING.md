@@ -10,6 +10,10 @@ bash scripts/setup_duum.sh      # pinned Duum engine (never vendored)
 cd jev-duum
 uv sync
 uv run --no-sync python -m pytest -q
+
+cd ../jev-service               # the HTTP frontend (FastAPI, its own env)
+uv sync
+uv run --no-sync pytest -q      # fabricates its frames: no engine, no display
 ```
 
 The five skipped tests are the opt-in live smoke test: set `JEV_LIVE=1` and a
@@ -20,12 +24,19 @@ a fraction of a cent and exercise the whole wire path.
 
 ```bash
 cd jev-duum
-uv run --no-sync ruff check jev_duum tests
+uv run --no-sync ruff check jev_duum tests tools
 uv run --no-sync python -m pytest -q
+
+cd ../jev-service          # the HTTP frontend, with its own dependencies
+uv sync && uv run --no-sync ruff check jev_service tests
+uv run --no-sync pytest -q
 ```
 
-CI runs exactly these two commands plus `uv sync --frozen` on a checkout of the
-pinned Duum commit.
+CI runs exactly these on a checkout of the pinned Duum commit, plus
+`uv sync --frozen` in both packages.  If your sibling `duum/` has commits on top
+of the pin, point the suite at a worktree of the pinned commit instead of
+touching the engine:
+`JEV_DUUM_PATH=/path/to/duum-pinned uv run --no-sync python -m pytest -q`.
 
 ## Conventions
 
@@ -47,10 +58,25 @@ pinned Duum commit.
   `prompts/`, `panel/`, `telemetry/`, `overlays/` and `prompt_eval/` keep a
   facade `__init__.py` that re-exports the old names; import them the same way
   and add code into the module that owns the responsibility.
+- **The engine has one owner.** It is single-threaded Python: only the Tk loop
+  (`panel/loop.py`) or a `Session` advances it, one per process. A frontend — the
+  Tk panel, the terminal UI, the HTTP service — reads the frames published to it
+  and never touches the engine.
+- **The tick rules live in `session/policy.py`.** When to ask the model, whether
+  a result is still fresh, when the intermission ends and how often the screen is
+  repainted belong there, not inlined in a loop: the Tk window and the headless
+  session must pace a session the same way.
+- **New frontends are opt-in, and nothing is taken from the terminal.** The CLI
+  is the default surface (`./main.sh`, `--headless`, `--record`, `--replay` and
+  the console scripts); `tests/test_jev_cli_surface.py` freezes its flags,
+  pilots and entry points. `jev-duum` keeps a single dependency (`duum`): a web
+  framework or a terminal toolkit lives elsewhere (`jev-service/`, or `curses`).
 - **A refactor must not change behaviour.** Before and after, run
   `tools/dump_panel_tree.py` and `cmp` the JSON; keep the request contract green
   in `tests/test_jev_prompt_contract.py` and
-  `tests/test_jev_snapshot_contract.py`. See [`docs/REFACTOR.md`](docs/REFACTOR.md).
+  `tests/test_jev_snapshot_contract.py`, and the tick rules in
+  `tests/test_jev_policy_equivalence.py`. See
+  [`docs/REFACTOR.md`](docs/REFACTOR.md).
 - **What travels to Jev is semantic.** No pixels, ever. Anything the panel
   shows that does not ride in the request is display-only and should be labelled
   as such (see the diagram's world tags).
