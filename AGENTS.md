@@ -4,7 +4,8 @@
 
 - `jev-duum/jev_duum/` — the pilot: `snapshot.py` → `prompts.py` →
   `controller.py` → `worker.py`/`panel.py`, plus `strategy.py`,
-  `world_model.py`, `world_readout.py`, `overlays.py` and `jev_log.py`.
+  `world_model.py`, `world_readout.py`, `overlays.py`, `theme.py` (the single
+  palette), `telemetry.py` (the session charts) and `jev_log.py`.
 - `jev-duum/tests/` — pytest suite; `jev-duum/artifacts/` is regenerable
   evidence and stays git-ignored.
 - `map/` — schematic E1M1 knowledge (`sense.py`, `heuristics.py`,
@@ -24,9 +25,15 @@ bash scripts/setup_duum.sh                      # clone Duum at the pinned commi
 cd jev-duum && uv sync                          # stdlib + Duum only
 uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)
 uv run --no-sync ruff check jev_duum tests      # lint
-uv run --no-sync python -m pytest -q            # 131 pass, 4 skip
+uv run --no-sync python -m pytest -q            # 151 pass, 5 skip
 docker compose up -d                            # audit log :27017/:3000/:8081
 ```
+
+The five skips are the opt-in live smoke tests (`JEV_LIVE=1` plus a key). If the
+sibling `duum/` checkout has commits on top of the adapter's pin, the adapter's
+HEAD check makes every engine-backed test fail; point the suite at a worktree of
+the pinned commit instead of touching the engine:
+`JEV_DUUM_PATH=/path/to/duum-pinned uv run --no-sync python -m pytest -q`.
 
 ## Coding Style & Naming Conventions
 
@@ -38,13 +45,16 @@ docker compose up -d                            # audit log :27017/:3000/:8081
   key sent to Jev — the prompts treat those names as a contract.
 - Docstrings explain *why*. Edit `map/`, then copy the file into `_map/`; that
   package is excluded from lint on purpose.
+- The palette and `FONTS` are defined **once**, in `theme.py`, and imported by
+  `panel.py` and `telemetry.py`; never redefine a colour in a widget.
+  `panel.py` re-exports `GREEN`/`AMBER`/`RED` for its own tests.
 
 ## Testing Guidelines
 
 - pytest: files `test_jev_<area>.py`, tests `test_<behaviour>()`.
 - Keep tests offline — `conftest.py` sets `JEV_NO_LOG`; use the fake Jev client,
   never real HTTP or MongoDB.
-- Live smoke tests need `JEV_LIVE=1` and `TYPESAFE_API_KEY`; four skips are
+- Live smoke tests need `JEV_LIVE=1` and `TYPESAFE_API_KEY`; five skips are
   expected. Keep the adapter boundary deterministic: no wall-clock, no
   randomness.
 
@@ -65,5 +75,19 @@ docker compose up -d                            # audit log :27017/:3000/:8081
   fixed screen, no tabs, no scrolling and no animation, colour reserved for
   abnormal states, and colour never the only cue. Change the guide first, then
   `panel.py`; review it offline with `tools/preview_panel.py` (0 $).
+- `theme.py` is the one code home of the palette and `FONTS` (DESIGN.md §3);
+  `panel.py` and `telemetry.py` import it and never redefine a colour.
+- `telemetry.py` (DESIGN.md §5, "Telemetría de sesión") draws session charts
+  from data that already exists — latency, `confidence` per head,
+  `assistance_events`, `applied_controls`, health/ammo, tokens and cost. Keep
+  the invariant intact: every instrument is a fixed-height canvas (with a modest
+  request width so it cannot widen its column) or a clipped fixed-width label,
+  so `tests/test_jev_hmi.py` keeps passing. Buffers are bounded `deque`s owned
+  by the `Dashboard`, never by a widget, and redraw is throttled (~3 Hz) — never
+  per tick, never with animation.
+- The one responsive rule is a single reflow in `Dashboard._relayout`: below
+  1600 px the bottom strip stacks `EVENTOS` over `BALANCE`; the numbered panels
+  keep their cells. One datum keeps one home — do not mirror a value into a
+  second panel.
 - Adapters fail soft (return `None`, never raise into gameplay); pixels are
   never model input; never commit `.env`, keys or commercial WADs.

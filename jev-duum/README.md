@@ -187,6 +187,9 @@ curl -s "localhost:3000/calls/<id>"                         # one complete call
 
 - Duum remains an external, pinned engine dependency and imports no model code.
 - Jev receives semantic snapshots, not the framebuffer.
+- The Tk window is presentation only (`panel.py`, `theme.py`, `telemetry.py`):
+  it reads snapshots and decisions and never touches the 60 Hz loop; its style
+  guide is [`../DESIGN.md`](../DESIGN.md).
 - Raw model proposals and deterministic assistance remain separately recorded.
 - Assisted play prioritizes critical health/ammo, restores a usable gun after
   collecting ammunition, and rejects melee targets blocked by walls or height.

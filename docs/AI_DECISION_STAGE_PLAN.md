@@ -41,8 +41,8 @@ directo) aún no está; hoy la ventana se alimenta de decisiones **en vivo**. El
 modo cine reproducirá un historial grabado a ritmo fijo sin red — ver F4.9 y la
 sección 7.
 
-Esta iteración 3 reorienta el foco respecto de
-[`UI_IMPROVEMENTS_V2.md`](UI_IMPROVEMENTS_V2.md): ya no se trata de un panel
+Esta iteración 3 reorienta el foco respecto del plan anterior
+([`UI_IMPROVEMENT_PLAN.md`](UI_IMPROVEMENT_PLAN.md)): ya no se trata de un panel
 para operar el piloto, sino de una **superficie de presentación** donde la
 decisión del modelo es la protagonista y el juego es un *picture-in-picture*.
 

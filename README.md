@@ -84,19 +84,29 @@ bash play.sh
 
 </details>
 
-## The window — game on the left, the decision on the right
+## The window — one fixed screen, nothing to select
 
-There is **one** window, split in two equal halves:
+The banner carries the product title `SCADA+IA+JEV+DOOM` (subtitle
+`Supervisión en tiempo real · jev-1.13.0`), the map, the tick/clock, the link
+state and the alarm summary. Below it, a fixed three-column grid:
 
-- **Left half — the game.** The live Duum view at the engine's own crisp
-  integer zoom, with the health/armor/ammo threshold meters, the schematic
-  mini-map and the episode state below it.
-- **Right half — the AI's decision.** The chosen `MOVIMIENTO` / `APUNTADO` /
-  `ACCIÓN` in large type, the full probability bars, the model's confidence,
-  any **deterministic guard correction** (`el modelo dijo «right» → aplicado
-  «left» …`) and a pace timeline; below that, the audit tabs. This is the part
-  to read from the back of the room.
+- **Left — the game and the world.** The live Duum view at the engine's own
+  crisp integer zoom; the health/armor/ammo meters and the episode table; the
+  schematic mini-map with its tags, the threat lines and the vital traces
+  (health/ammo with a mark on every guard intervention).
+- **Centre — the decision.** One row per typed question (`MOVIMIENTO` /
+  `APUNTADO` / `ACCIÓN`, plus `OBJETIVO` on the hunt prompts), the chosen answer
+  in large type, the full probability bar and confidence band, the
+  **deterministic guard** as proposed→applied, the `POR QUÉ` observations, the
+  strategy plan, and the latency sparkline (p50/p95 references).
+- **Right — the link.** The session KPIs (decisions, p50/p95, tokens, cost); the
+  request (`state` index, typed questions, token/cost consumption); the response
+  (confidence per head, previous→current controls, raw JSON).
+- **Bottom — events and balance.** `EVENTOS` (newest first, one row per
+  decision, with the guard's motive) beside `BALANCE` (guard intervention rate
+  and rule ranking, applied-movement and action distribution).
 
+Nothing is behind a tab and nothing scrolls: everything is always on screen.
 Launch it with `./main.sh`.
 
 <details>
@@ -104,7 +114,7 @@ Launch it with `./main.sh`.
 
 ```bash
 cd jev-duum
-python3 tools/preview_panel.py             # one shot of the window per tab
+python3 tools/preview_panel.py             # offline shots of the fixed screen (no tabs)
 python3 tools/decision_stage_mockup.py     # the design mockup
 ```
 
@@ -141,21 +151,21 @@ offline prompt harness and the measured results.
 
 </details>
 
-## The inspector tabs
+## Session telemetry
 
-The right-hand column carries the model's audit trail:
+Filling the slack that used to be black, seven instruments read data the pilot
+already has (`jev_duum/telemetry.py`): a latency sparkline with p50/p95 lines
+and amber points over p95; confidence per head (MOV/APU/ACC); guard intervention
+rate and the most frequent rules; applied-movement and action distribution;
+health/ammo traces with a mark per intervention; tokens in/out plus running and
+average cost; and a previous→current control line. They redraw on a throttle
+(~3 Hz) from bounded buffers, never touch the 60 Hz loop, and — like every panel
+— never change size with their data.
 
-| Tab | Contents |
-|---|---|
-| `DECISIÓN` | proposed vs applied controls (the axis the guard changed goes amber), guard interventions and the strategy plan. |
-| `RESPUESTA` | model id, prompt, tokens, cost and latency; the three probability distributions with the argmax highlighted and `confidence` pills; the raw response JSON. |
-| `PETICIÓN` | the exact `state` sent to Jev, the questions with their instructions and criteria, a per-key index of the state, and the payload size. |
-| `MUNDO` | the schematic readout: room, route remaining, hidden foes, sector risk, top threats and aspirations — flagged as visual-only or as travelling to the model. |
-| `HISTORIAL` | the latest decisions (applied controls and confidence), newest first. |
-
-The window starts fullscreen and reflows on resize: the columns adapt and the
-mini-map scales with the left column. `F11` toggles fullscreen; because there is
-no title bar then, the top-right corner also carries `□ F11` and `✕ salir`.
+The window starts fullscreen and reflows on resize: below 1600 px the bottom
+strip stacks `EVENTOS` over `BALANCE` instead of overflowing. `F11` toggles
+fullscreen; because there is no title bar then, the top-right corner also
+carries `F11` and `CERRAR`.
 
 ## Audit log (optional)
 
@@ -177,10 +187,10 @@ never raises. `JEV_NO_LOG=1` disables it, `JEV_LOG_URL` points elsewhere.
 ```bash
 cd jev-duum
 uv run --no-sync ruff check jev_duum tests
-uv run --no-sync python -m pytest -q          # 131 pass, 4 skipped (live API)
+uv run --no-sync python -m pytest -q          # 151 pass, 5 skipped (live API)
 ```
 
-The four skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
+The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions, including why
 `jev_duum/_map/` is excluded from linting.
 
@@ -192,8 +202,8 @@ The four skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
   schematic world model that rides inside `v3w` requests.
 - [`docs/UI_IMPROVEMENT_PLAN.md`](docs/UI_IMPROVEMENT_PLAN.md) — the inspector
   redesign, fullscreen reflow and request/response detail.
-- [`docs/UI_IMPROVEMENTS_V2.md`](docs/UI_IMPROVEMENTS_V2.md) — an offline (\$0)
-  audit of the shipped inspector and the phased improvement plan.
+- [`DESIGN.md`](DESIGN.md) — **current**: the HMI style guide (transmission
+  SCADA discipline) that `panel.py`, `theme.py` and `telemetry.py` implement.
 - [`docs/AI_DECISION_STAGE_PLAN.md`](docs/AI_DECISION_STAGE_PLAN.md) — the
   decision-first layout for a live AI talk (now the single window).
 - [`jev-duum/docs/JEV_INTEGRATION.md`](jev-duum/docs/JEV_INTEGRATION.md) —

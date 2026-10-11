@@ -12,7 +12,7 @@ uv sync
 uv run --no-sync python -m pytest -q
 ```
 
-The four skipped tests are the opt-in live smoke test: set `JEV_LIVE=1` and a
+The five skipped tests are the opt-in live smoke test: set `JEV_LIVE=1` and a
 `TYPESAFE_API_KEY` (in `jev-duum/.env` or the environment) to run them. They cost
 a fraction of a cent and exercise the whole wire path.
 
@@ -35,13 +35,16 @@ pinned Duum commit.
   (the source of truth, standard library only). Only its imports were made
   package-relative. Change `map/`, then copy the file across — and leave the
   `_map` exception in `pyproject.toml` intact.
-- **The loop is not a playground.** The Tk panel and the overlays are
-  presentation only: they read snapshots and decisions and never touch the
-  60 Hz loop, the snapshot contract or the decision worker. Keep the panel
-  delta-updating (only redraw what changed) so a resize costs no frames.
+- **The loop is not a playground.** The Tk panel, the telemetry and the
+  overlays are presentation only: they read snapshots and decisions and never
+  touch the 60 Hz loop, the snapshot contract or the decision worker. Keep the
+  panel delta-updating (only redraw what changed) so a resize costs no frames.
+  The palette lives once in `theme.py`; the session charts in `telemetry.py` are
+  fixed-size canvases with bounded buffers, redrawn throttled, so the HMI
+  invariant (`tests/test_jev_hmi.py`) keeps passing.
 - **What travels to Jev is semantic.** No pixels, ever. Anything the panel
   shows that does not ride in the request is display-only and should be labelled
-  as such (see the `MUNDO` tab).
+  as such (see the diagram's world tags).
 - **Model failures never stop gameplay.** New adapters return `None` and the
   prompt/guard path degrades instead of raising.
 - **Determinism.** The engine, baselines and replay paths are fixed-tick and
