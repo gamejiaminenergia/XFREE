@@ -27,12 +27,23 @@ standard library + Duum only. A decision costs about $0.00003–$0.00005.
 |---|---|---|
 | **The game window**: Duum + the SCADA panel | `./main.sh` | X + Tk, API key |
 | **The same panel in the terminal** (works over SSH) | `./main.sh --tui` | a terminal, API key |
+| **The terminal panel against a service**, elsewhere on the network | `jev-duum-tui --url http://127.0.0.1:8000` | a terminal, nothing else |
 | **The panel in a browser** + the HTTP/WebSocket API | `cd jev-service && uv sync && uv run --no-sync jev-service` | API key (or `--fake`, below) |
 | **No UI at all**: a JSON summary on stdout | `./main.sh --headless --ticks 600` | API key |
 | **You play** instead of the AI | `./main.sh --pilot manual` | X + Tk |
 | **Offline baseline** — no network, no key, no cost | `./main.sh --pilot scripted --headless --ticks 600` | nothing |
 | **A video** of the game window | `bash scripts/record.sh --launch --window` | X + Tk, API key |
 | **A video with no X** (game view only) | `bash scripts/record.sh --from-backend --fake` | nothing |
+
+**Any of the live modes, for free.** Add `--fake` and the model answers locally
+and deterministically: no key, no network, 0 $, and the summary says so instead
+of inventing a bill.
+
+```bash
+./main.sh --fake                       # the window, played by the local model
+./main.sh --tui --fake                 # the terminal panel, for free
+./main.sh --headless --fake --ticks 600
+```
 
 `./main.sh` is the wrapper: it finds or clones the pinned engine, syncs the
 environment, applies the balance mod and forwards any extra flag to the CLI, so
@@ -47,6 +58,7 @@ every request in the optional audit log (see below).
 deterministic model:
 
 ```bash
+./main.sh --tui --fake                      # the terminal panel, 0 $
 cd jev-service && uv sync && uv run --no-sync jev-service --fake   # browser panel, 0 $
 cd jev-duum && uv run --no-sync python tools/preview_panel.py      # offline screenshots, 0 $
 ```
@@ -176,8 +188,15 @@ works over SSH. The engine runs headless and the panel is text — the same
 palette (translated to ANSI) and the same fixed grid as the window.
 
 ```bash
-./main.sh --tui
+./main.sh --tui                    # engine and panel in this process
+./main.sh --tui --fake             # the same, with the local model: 0 $
+jev-duum-tui --url http://host:8000   # draw a service running elsewhere
 ```
+
+`jev-duum-tui` is the same panel as a **client of `jev-service`**: it polls the
+state, paints the game from `/api/frame.raw` and sends `p`/`+`/`-` to
+`/api/control`. It needs nothing but `urllib` and a terminal, so a session can
+run on one machine and be watched from another (over SSH).
 
 Keys: `q` quits, `p` pauses, `+`/`-` change the decision rate, `g` toggles the
 game view. On exit it prints the same JSON summary as a headless run.
@@ -187,7 +206,8 @@ game view. On exit it prints the same JSON summary as a headless run.
 99% of real time**. From ~112 columns it adds the three-column layout with the
 game as ANSI half blocks, and painting that costs more than the engine itself:
 **38 ticks/s, about 63% of real time**. It is the same session and the same
-engine in both cases — the wide view is simply expensive to draw.
+engine in both cases — the wide view is simply expensive to draw. The panel only
+asks the engine for pixels when it is going to paint them.
 
 ## The browser panel and the HTTP API — `jev-service/`
 
@@ -207,15 +227,13 @@ never leaves the server.
 | `GET /api/state` | the latest frame as JSON: player, episode, worker, decision and the full semantic `snapshot` (`?full=0` drops it) |
 | `GET /api/meta` | pilot, model, prompt version, mission, engine commit, WAD |
 | `GET /api/frame.png` | the engine frame as PNG (`/api/frames.stream` for a plain `<img>`) |
+| `GET /api/frame.raw` | the same frame as raw RGB, for a client that paints its own cells (the terminal UI) |
 | `WS /ws` | push of `{seq, state}` |
 | `POST /api/control` | `{"paused": true}`, `{"decision_rate": 8}` (`--control-token` if exposed) |
 
-```bash
-curl -s localhost:8000/api/state | jq .decision.applied
-```
-
-Details, and the reason the engine is never touched by a request, in
-[`docs/BACKEND.md`](docs/BACKEND.md).
+Two clients ship with it: the browser page (`GET /`) and
+`jev-duum-tui --url`. Details, and the reason the engine is never touched by a
+request, in [`docs/BACKEND.md`](docs/BACKEND.md).
 
 ## Recording video
 
@@ -266,7 +284,7 @@ never raises. `JEV_NO_LOG=1` disables it, `JEV_LOG_URL` points elsewhere.
 ```bash
 cd jev-duum
 uv run --no-sync ruff check jev_duum tests tools
-uv run --no-sync python -m pytest -q          # 220 pass, 5 skipped (live API)
+uv run --no-sync python -m pytest -q          # 227 pass, 5 skipped (live API)
 
 cd ../jev-service                             # the HTTP frontend, own dependencies
 uv sync && uv run --no-sync ruff check jev_service tests

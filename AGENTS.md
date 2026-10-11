@@ -20,7 +20,9 @@
   and `loop.py` (the 60 Hz driver).
 - `jev-duum/jev_duum/tui/` — the terminal frontend (`curses`, standard library
   only): the same panel over SSH, no display needed.  `render.py` is pure
-  presentation, `colors.py` maps `theme.py` to ANSI, `app.py` is the loop.
+  presentation, `colors.py` maps `theme.py` to ANSI, `app.py` is the loop and
+  `remote.py` is the same panel as a **client of the service** (`jev-duum-tui
+  --url`), which needs nothing but `urllib`.
 - `jev-duum/jev_duum/telemetry/` + `overlays/` — session charts and the
   mini-automap / stale HUD.
 - `jev-service/` — optional HTTP/WebSocket frontend over `session` (FastAPI,
@@ -57,12 +59,14 @@ bash scripts/setup_duum.sh                      # clone Duum at the pinned commi
 cd jev-duum && uv sync                          # stdlib + Duum only
 uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)
 uv run --no-sync jev-duum --pilot jev-assisted --tui   # same panel, in the terminal
+uv run --no-sync jev-duum --pilot jev-assisted --fake  # any mode, local model: 0 $
+uv run --no-sync jev-duum-tui --url http://127.0.0.1:8000   # terminal client of jev-service
 uv run --no-sync ruff check jev_duum tests tools # lint
-uv run --no-sync python -m pytest -q            # 220 pass, 5 skip
+uv run --no-sync python -m pytest -q            # 227 pass, 5 skip
 docker compose up -d                            # audit log :27017/:3000/:8081
 bash scripts/record.sh --launch --window        # graba la partida en video/
 bash scripts/record.sh --from-backend           # vídeo sin X (solo la vista del juego)
-cd jev-service && uv sync && uv run --no-sync pytest -q    # frontend HTTP (12 tests)
+cd jev-service && uv sync && uv run --no-sync pytest -q    # frontend HTTP (15 tests)
 uv run --no-sync jev-service --fake             # HTTP + navegador, modelo local
 ```
 
@@ -184,6 +188,11 @@ the pinned commit instead of touching the engine:
 - **`jev-duum` has one dependency: `duum`.** A web framework, a charting library
   or a terminal toolkit do not belong in it: the service lives in `jev-service/`
   and the TUI uses `curses` from the standard library.
+- **There is one fake client, in `jev_duum/fake.py`.** The offline tools, the
+  service, the browser panel and `--fake` all use it; do not copy the answer
+  dictionary into a new tool.  A fake run must say it was fake — `network`,
+  `model_source` and the service's `/api/meta` all report the local model
+  instead of inventing a bill.
 - The service binds to `127.0.0.1`, takes `--control-token` when exposed, and
   keeps `TYPESAFE_API_KEY` server-side: no client ever sees it.  It must not
   read the engine directly — it goes through a `Hub` fed by a `Session`.

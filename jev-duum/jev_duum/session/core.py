@@ -235,6 +235,11 @@ class Session:
         )
 
     # -- control -------------------------------------------------------------
+    def frame_size(self) -> tuple[int, int]:
+        """The engine buffer's size: a frontend paints cells from it."""
+
+        return (self.runtime.canvas.w, self.runtime.canvas.h)
+
     def set_paused(self, paused: bool) -> bool:
         self.paused = bool(paused)
         return self.paused

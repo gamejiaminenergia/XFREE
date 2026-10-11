@@ -68,6 +68,7 @@ def create_app(hub, session=None, meta=None, *, control_token: str | None = None
             "uptime_s": round(time.time() - app.state.started, 1),
             "tick": state.get("tick"),
             "seq": hub.seq(),
+            "dropped": hub.dropped(),
         }
 
     @app.get("/api/meta")
@@ -98,6 +99,28 @@ def create_app(hub, session=None, meta=None, *, control_token: str | None = None
         return Response(
             content=payload, media_type="image/png",
             headers={"Cache-Control": "no-store", "X-Frame-Seq": str(seq)},
+        )
+
+    @app.get("/api/frame.raw")
+    def api_frame_raw():
+        """The engine buffer as it is: 8-bit RGB, for a client that paints it.
+
+        A terminal UI composes its own cells from these bytes; making it decode a
+        PNG first would be work with nothing to show for it.
+        """
+
+        rgb = hub.rgb()
+        if rgb is None:
+            raise HTTPException(status_code=503, detail="no frame yet (run with pixels on)")
+        width, height = hub.size()
+        return Response(
+            content=rgb, media_type="application/octet-stream",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Frame-Width": str(width),
+                "X-Frame-Height": str(height),
+                "X-Frame-Seq": str(hub.seq()),
+            },
         )
 
     @app.get("/api/frames.stream")

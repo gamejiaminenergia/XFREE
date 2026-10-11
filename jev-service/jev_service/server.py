@@ -48,10 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_session(args, wad):
     if args.fake:
-        from .fake import FakeClient
+        from jev_duum.fake import FakeJevClient as FakeClient
 
         controller = JevDuumController(
-            client=FakeClient(), assisted=args.pilot == "jev-assisted",
+            client=FakeClient(), model="fake-local",
+            assisted=args.pilot == "jev-assisted",
             prompt_version=args.prompt_version, pilot=args.pilot,
         )
     else:

@@ -28,57 +28,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from jev_duum.controller import JevDuumController  # noqa: E402
+from jev_duum.fake import FakeJevClient  # noqa: E402
 from jev_duum.integration import DuumRuntime, default_duum_checkout, load_duum  # noqa: E402
 from jev_duum.session.core import Session  # noqa: E402
 from jev_duum.wad import default_wad_path, resolve_wad  # noqa: E402
 
 FPS = 60
-
-
-class FakeClient:
-    """A local, deterministic model: the tool must work with no key and no cost."""
-
-    endpoint = "fake://local"
-    logger = None
-    model = "fake-local"
-
-    ANSWERS = {
-        "movement": {
-            "type": "choice", "choice": "strafe_left", "confidence": 0.6,
-            "probabilities": {
-                "forward": 0.10, "forward_left": 0.02, "forward_right": 0.02,
-                "strafe_left": 0.60, "strafe_right": 0.08, "back_left": 0.01,
-                "back_right": 0.01, "back": 0.06, "hold": 0.10,
-            },
-        },
-        "aim": {
-            "type": "choice", "choice": "right", "confidence": 0.7,
-            "probabilities": {"left": 0.1, "straight": 0.2, "right": 0.7},
-        },
-        "interaction": {
-            "type": "choice", "choice": "fire", "confidence": 0.8,
-            "probabilities": {"fire": 0.8, "use": 0.1, "neither": 0.1},
-        },
-        "target": {
-            "type": "choice", "choice": "advance", "confidence": 0.5,
-            "probabilities": {
-                "target_1": 0.2, "target_2": 0.2, "target_3": 0.1,
-                "exit": 0.2, "advance": 0.3,
-            },
-        },
-    }
-
-    def __init__(self, tokens: int = 1180):
-        self.tokens = tokens
-        self.calls = 0
-
-    def ask(self, state, questions, *, model=None, context=None):
-        self.calls += 1
-        return {
-            "model": self.model,
-            "answers": {name: self.ANSWERS[name] for name in questions},
-            "usage": {"input_tokens": self.tokens, "output_tokens": 44},
-        }
 
 
 def nvenc_works() -> bool:
@@ -129,7 +84,7 @@ def main(argv=None) -> int:
     wad = resolve_wad(args.wad)
     if args.fake:
         controller = JevDuumController(
-            client=FakeClient(), assisted=args.pilot == "jev-assisted",
+            client=FakeJevClient(), assisted=args.pilot == "jev-assisted",
             prompt_version=args.prompt_version, pilot=args.pilot,
         )
     else:

@@ -137,8 +137,8 @@ class TuiApp:
 
         if not self.show_game or frame.rgb is None:
             return 0
-        canvas = self.session.runtime.canvas
-        art = render.game_art(frame.rgb, canvas.w, canvas.h, width, rows, colors.basic)
+        source_w, source_h = self.session.frame_size()
+        art = render.game_art(frame.rgb, source_w, source_h, width, rows, colors.basic)
         for index, cells in enumerate(art):
             at = column
             for fg, bg, char in cells:
@@ -221,6 +221,19 @@ class TuiApp:
         curses.doupdate()
 
     # -- keys and loop -------------------------------------------------------
+    def draw_disconnected(self, error) -> None:
+        """The session went away: say it on the same screen, never a traceback."""
+
+        height, width = self.stdscr.getmaxyx()
+        self.stdscr.erase()
+        self._write(0, 0, width, [[
+            ("SIN SESIÓN  ", "alarm"),
+            (str(error or "")[: max(0, width - 14)], "off"),
+        ]])
+        self._write(2, 0, width, [[("reintentando…   [q] salir", "static")]])
+        self.stdscr.noutrefresh()
+        curses.doupdate()
+
     def handle_keys(self, stop: threading.Event) -> None:
         while True:
             try:

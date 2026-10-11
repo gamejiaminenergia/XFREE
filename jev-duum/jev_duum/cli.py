@@ -111,6 +111,14 @@ def make_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--fake",
+        action="store_true",
+        help=(
+            "Answer with a local deterministic model instead of calling Jev: no API "
+            "key, no network, 0 $. Implies --pilot jev-assisted unless you chose one."
+        ),
+    )
+    parser.add_argument(
         "--log-calls",
         action="store_true",
         help=(
@@ -152,6 +160,8 @@ def _validate(parser, args):
         parser.error("exact recording currently requires synchronous --headless mode")
     if args.record_snapshots and not args.record:
         parser.error("--record-snapshots requires --record")
+    if args.fake and args.pilot in ("scripted", "random", "heuristic", "hunter"):
+        parser.error(f"--fake replaces the model, so it makes no sense with --pilot {args.pilot}")
     if args.tui:
         if args.headless:
             parser.error("--tui draws in the terminal, so it cannot be combined with --headless")
@@ -164,6 +174,19 @@ def _validate(parser, args):
 def _controller(parser, args):
     if args.pilot not in ("jev", "jev-assisted"):
         return None
+    if args.fake:
+        from .controller import JevDuumController
+        from .fake import FakeJevClient
+
+        print("Local model (--fake): no network, no key, 0 $.", file=sys.stderr)
+        return JevDuumController(
+            client=FakeJevClient(),
+            model="fake-local",
+            assisted=args.pilot == "jev-assisted",
+            prompt_version=args.prompt_version,
+            pilot=args.pilot,
+            mission=args.mission,
+        )
     if getattr(args, "log_calls", False):
         # The client only enables the audit log when JEV_NO_LOG is unset; this
         # flag is the explicit opt-in for a session that inherits the variable.
@@ -188,6 +211,9 @@ def _controller(parser, args):
 def play(argv=None) -> int:
     parser = make_parser()
     args = parser.parse_args(argv)
+    if args.fake and args.pilot == "manual":
+        # Nobody types --pilot with --fake: they want the model to play, locally.
+        args.pilot = "jev-assisted"
     _validate(parser, args)
     width, height = _dimensions(parser, args.size)
     needs_window = (args.pilot == "manual" or (
@@ -336,6 +362,15 @@ def play(argv=None) -> int:
             model=controller.metadata if controller else None,
             prompt_version=controller.prompt_version if controller else None,
         )
+    if args.fake:
+        # The model answered locally: say so, and do not let invented tokens read
+        # as a real bill.  The shape of the summary stays the same.
+        summary["network"] = "offline: local model"
+        summary["fake_model"] = True
+        summary["cost_usd"] = None
+        if isinstance(summary.get("model"), dict):
+            summary["model"]["network"] = "offline"
+            summary["model"]["model_source"] = "local fake (--fake)"
     print(json.dumps(summary, indent=2))
     return 1 if summary.get("model_error") else 0
 

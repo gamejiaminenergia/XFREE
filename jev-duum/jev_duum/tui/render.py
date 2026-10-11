@@ -192,13 +192,20 @@ def link(frame, width: int) -> list[Line]:
     if decision is None:
         return [line("sin datos del enlace todavia", "off")]
     usage = (decision.input_tokens or {}).get("request", 0)
+    # A remote frame carries the two counts instead of the raw request payload,
+    # which would be kilobytes on every poll.
+    keys = getattr(decision, "request_keys", None)
+    if keys is None:
+        keys = len(decision.request_state or {})
+    questions = getattr(decision, "request_questions_count", None)
+    if questions is None:
+        questions = len(decision.request_questions or {})
     rows = [
         line(
             f"MODELO {decision.model_id}  PROMPT {decision.prompt_version}",
             "value",
         ),
-        line(f"TOKENS {usage}  CLAVES {len(decision.request_state or {})}  "
-             f"PREGUNTAS {len(decision.request_questions or {})}"),
+        line(f"TOKENS {usage}  CLAVES {keys}  PREGUNTAS {questions}"),
         line(f"PETICION {decision.request_ms:.0f} ms  DECISION {decision.decision_ms:.0f} ms"),
         line(f"EDAD {frame.tick - decision.observation_tick} ticks  "
              f"LLAMADAS {decision.prediction_calls} / {decision.execution}"),

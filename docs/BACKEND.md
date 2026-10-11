@@ -59,6 +59,28 @@ que es lo que cuesta pintar el juego celda a celda.
 
 Teclas: `q` salir, `p` pausa, `+`/`-` ritmo de decisión, `g` vista del juego.
 
+**Y el mismo panel como cliente de este servicio**:
+
+```bash
+jev-duum-tui --url http://127.0.0.1:8000
+```
+
+`tui/remote.py` lee `/api/state`, pinta desde `/api/frame.raw` y manda
+`p`/`+`/`-` a `/api/control`. No usa nada más que `urllib`, así que la sesión
+puede correr en una máquina y verse desde otra por SSH. El mapeo
+(`frame_from_state`) reconstruye el mismo valor que produce una sesión local, de
+modo que `render.py` no distingue una fuente de la otra: por eso el formato de
+red lleva los dos contadores (`keys`, `questions`) en vez del `request_state`
+crudo, que serían kilobytes en cada sondeo.
+
+### `--fake`: los mismos modos, 0 $
+
+Cualquier modo en vivo admite `--fake`, que responde con un modelo local
+determinista (`jev_duum/fake.py`, el único cliente falso del repositorio: lo
+usan los tools, el servicio y la TUI). Sin clave, sin red, sin factura — y el
+resumen lo dice (`network`, `model_source`, `fake_model`) en vez de inventarse
+un coste.
+
 ### `jev-service`
 
 Paquete aparte (`jev-service/`) para que `jev-duum` conserve
@@ -76,10 +98,14 @@ uv run --no-sync jev-service --fake     # modelo local: 0 $, sin clave
 | `GET /api/meta` | pilot, modelo, prompt, misión, commit del motor, WAD |
 | `GET /api/state` | jugador, episodio, worker, decisión y el `snapshot` semántico completo (`?full=0` lo omite) |
 | `GET /api/frame.png` | el frame del motor, en PNG |
+| `GET /api/frame.raw` | el mismo frame en RGB crudo, para un cliente que compone sus propias celdas (la TUI) |
 | `GET /api/frames.stream` | `multipart/x-mixed-replace` para un `<img>` |
 | `WS /ws` | push `{seq, state}` |
 | `POST /api/control` | `{"paused": true}`, `{"decision_rate": 8}` |
 | `GET /` | el panel en el navegador |
+
+Dos clientes vienen con él: la página del navegador (`GET /`) y
+`jev-duum-tui --url`, el mismo panel en la terminal.
 
 Detalles que importan: el motor no lo toca ninguna petición (la `Session` corre
 en un hilo y un `Hub` guarda el último valor; un cliente lento pierde frames,
@@ -87,6 +113,11 @@ nunca frena la sesión), el PNG se escribe con `zlib` de la stdlib (nada de
 Pillow), no hay `response_model` de pydantic por frame, la paleta de la portada
 sale de `theme.py`, escucha en `127.0.0.1` y `--control-token` protege el
 control. La clave de TypeSafe nunca sale del servidor.
+
+Y una regla de robustez: si un frame no se puede serializar, `Hub.publish` lo
+**cuenta y lo descarta** en vez de lanzar — el hilo del motor es único y un
+fallo de serialización no puede llevarse la partida por delante. `/health`
+publica ese contador (`dropped`), así que no pasa inadvertido.
 
 ### Vídeo desde el backend
 

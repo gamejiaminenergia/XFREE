@@ -23,10 +23,21 @@ Then open <http://127.0.0.1:8000>. It binds to localhost by default.
 | `GET /api/meta` | pilot, model, `prompt_version`, mission, engine commit, WAD |
 | `GET /api/state` | the latest frame as JSON: player, episode, worker, decision, and the full semantic `snapshot` (the same shape that travels to Jev). `?full=0` drops the snapshot |
 | `GET /api/frame.png` | the latest engine frame, as PNG |
+| `GET /api/frame.raw` | the same frame as raw RGB, for a client that paints its own cells |
 | `GET /api/frames.stream` | `multipart/x-mixed-replace` of those PNGs, for a plain `<img>` |
 | `WS /ws` | push of `{seq, state}` at the session's frame rate |
 | `POST /api/control` | `{"paused": true}` and/or `{"decision_rate": 8}` |
 | `GET /` | the panel in the browser |
+
+Two clients ship with it: the browser page and the terminal panel,
+
+```bash
+cd ../jev-duum && uv run --no-sync jev-duum-tui --url http://127.0.0.1:8000
+```
+
+which polls the state, paints the game from `/api/frame.raw` and sends its keys
+to `/api/control`. It needs nothing but `urllib` and a terminal, so the session
+can run on one machine and be watched from another.
 
 ```bash
 curl -s localhost:8000/api/state | jq .decision.applied

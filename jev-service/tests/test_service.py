@@ -43,7 +43,9 @@ def _frame(*, rgb=None, tick=42, with_decision=True):
                                                applied="left", reason="r")],
             observations={"movement": "moverse"}, strategy={"mission": "clear"},
             model_id="fake-1.0", prompt_version="v3w", input_tokens={"request": 900},
+            request_state={"tick": tick - 5}, request_questions={"movement": {}},
             cost_usd=0.0001, request_ms=400.0, decision_ms=410.0,
+            prediction_calls=1, execution="single-request",
         )
     return SimpleNamespace(
         tick=tick, snapshot=snapshot, decision=decision, controls=_controls(),
@@ -95,6 +97,19 @@ def test_a_slow_subscriber_loses_frames_and_never_blocks_the_engine():
     hub.publish(_frame(tick=4))  # no subscriber: publishing still works
 
 
+def test_a_frame_that_cannot_be_serialised_never_takes_the_engine_down():
+    """It is counted and reported, not raised: the engine thread must survive."""
+
+    hub = Hub()
+    hub.set_frame_size(2, 2)
+    hub.publish(_frame(tick=1))
+    broken = _frame(tick=2)
+    del broken.decision.observations  # a shape the serialiser does not expect
+    hub.publish(broken)  # must not raise
+    assert hub.dropped() == 1
+    assert hub.state()["tick"] == 1  # the last good frame is still served
+
+
 def test_the_compact_state_has_the_shape_the_web_reads():
     state = compact(_frame())
     assert state["map"] == "E1M1" and state["state"] == "running"
@@ -131,6 +146,28 @@ def test_the_frame_endpoint_returns_a_real_png():
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert response.content.startswith(PNG_MAGIC)
+
+
+def test_the_raw_frame_endpoint_returns_the_engine_bytes():
+    """A terminal client paints cells from these bytes, not from a PNG."""
+
+    client, _hub, _session = _client()
+    response = client.get("/api/frame.raw")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["x-frame-width"] == "2"
+    assert response.headers["x-frame-height"] == "2"
+    assert len(response.content) == 2 * 2 * 3
+
+
+def test_the_state_carries_what_a_second_frontend_needs():
+    """The terminal UI reads the same payload as the browser."""
+
+    client, _hub, _session = _client()
+    decision = client.get("/api/state").json()["decision"]
+    for key in ("keys", "questions", "prediction_calls", "execution",
+                "interventions", "applied", "proposed", "confidence"):
+        assert key in decision, key
 
 
 def test_the_page_is_served_with_the_palette_from_theme():

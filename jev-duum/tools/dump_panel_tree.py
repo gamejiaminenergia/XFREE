@@ -35,47 +35,12 @@ import jev_duum.controller as controller_module  # noqa: E402
 controller_module.time.perf_counter = lambda: 0.0
 
 from jev_duum.controller import JevDuumController  # noqa: E402
+from jev_duum.fake import FakeJevClient  # noqa: E402
 from jev_duum.integration import default_duum_checkout, load_duum  # noqa: E402
 from jev_duum.panel import Dashboard  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
 from jev_duum.types import DuumControls  # noqa: E402
 from jev_duum.wad import default_wad_path, resolve_wad  # noqa: E402
-
-
-class FakeJevClient:
-    """Stand-in for ``JevClient`` that never touches the network."""
-
-    def __init__(self, *, model: str = "jev-preview-1.0", tokens: int = 1180):
-        self.endpoint = "fake://typesafe"
-        self.model = model
-        self.tokens = tokens
-        self.calls = 0
-        self.answers = {
-            "movement": {
-                "type": "choice", "choice": "strafe_left", "confidence": 0.6,
-                "probabilities": {
-                    "forward": 0.10, "forward_left": 0.02, "forward_right": 0.02,
-                    "strafe_left": 0.60, "strafe_right": 0.08, "back_left": 0.01,
-                    "back_right": 0.01, "back": 0.06, "hold": 0.10,
-                },
-            },
-            "aim": {
-                "type": "choice", "choice": "right", "confidence": 0.7,
-                "probabilities": {"left": 0.1, "straight": 0.2, "right": 0.7},
-            },
-            "interaction": {
-                "type": "choice", "choice": "fire", "confidence": 0.8,
-                "probabilities": {"fire": 0.8, "use": 0.1, "neither": 0.1},
-            },
-        }
-
-    def ask(self, state, questions, *, model=None, context=None):
-        self.calls += 1
-        return {
-            "model": self.model,
-            "answers": {name: self.answers[name] for name in questions},
-            "usage": {"input_tokens": self.tokens, "output_tokens": 44},
-        }
 
 
 class _Stats:
