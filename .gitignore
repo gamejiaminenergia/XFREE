@@ -1,8 +1,6 @@
-# Pre-existing sibling checkouts keep their own git repositories and remotes.
-# This root checkpoint only versions the new Jev work (docs/ and jev-duum/).
+# The pinned Duum engine keeps its own git repository and remote; this root
+# project versions the Jev pilot (docs/ and jev-duum/).
 duum/
-laya-duum/
-laya-coreml/
 
 # Virtualenvs, caches and build output
 .venv/

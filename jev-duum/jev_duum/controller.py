@@ -3,8 +3,8 @@
 Jev is a System One model: one ``state`` per request, answered with typed values
 and probabilities. The adapter therefore assembles a single named-field state
 from the canonical snapshot and asks the three Duum choices in that same
-request. The deterministic assistance layer is model-agnostic and unchanged
-from the Laya adapter; it only sees the argmax controls.
+request. The deterministic assistance layer is model-agnostic; it only sees the
+argmax controls.
 """
 
 from __future__ import annotations
@@ -221,7 +221,7 @@ class JevDuumController:
             execution="single-request",
         )
 
-    # -- deterministic assistance (unchanged from the Laya adapter) ----------
+    # -- deterministic assistance -------------------------------------------
     def _assist(self, snapshot: DuumSnapshot, proposed: DuumControls):
         if not self.assisted:
             return proposed, ()

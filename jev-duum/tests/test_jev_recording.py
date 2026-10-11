@@ -12,8 +12,6 @@ from jev_duum.wad import resolve_wad
 ROOT = Path(__file__).parents[1]
 DUUM_ROOT = Path(os.environ.get("JEV_DUUM_PATH", ROOT.parent / "duum"))
 WAD_PATH = ROOT / "freedoom1.wad"
-if not WAD_PATH.is_file():
-    WAD_PATH = ROOT.parent / "laya-duum" / "freedoom1.wad"
 HAS_FIXTURE = (DUUM_ROOT / "duum" / "engine.py").is_file() and WAD_PATH.is_file()
 
 pytestmark = pytest.mark.skipif(

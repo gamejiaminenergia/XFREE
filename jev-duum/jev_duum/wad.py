@@ -30,7 +30,6 @@ def default_wad_path() -> Path:
     for candidate in (
         root / "freedoom1.wad",
         root / "assets" / "freedoom1.wad",
-        root.parent / "laya-duum" / "freedoom1.wad",
     ):
         if candidate.is_file():
             return candidate

@@ -2,10 +2,7 @@
 
 This adapter lets **Jev** (TypeSafe System One, `POST /v1/systemone`) play the
 external pure-Python [Duum](https://github.com/hmofet/duum) engine from compact
-semantic state. Rendered pixels are never sent to the model. It is the Jev
-backend of the [`laya-duum`](https://github.com/hadlock/laya-duum) adapter: the
-engine, snapshot, scheduler, deterministic assistance, recording and replay are
-shared; only the decision backend differs.
+semantic state. Rendered pixels are never sent to the model.
 
 ## Reproducible inputs
 
@@ -18,12 +15,12 @@ Duum is pinned to commit:
 The adapter installs with only the standard library and Duum:
 
 ```bash
-uv sync                      # no torch, no CUDA, no Laya checkpoint
+uv sync                      # no torch, no CUDA, no local checkpoint
 uv run --no-sync jev-duum --pilot scripted --headless --ticks 600
 ```
 
-The default WAD resolves to `../laya-duum/freedoom1.wad` (BSD-3 licensed
-Freedoom 0.13.0, `28795076` bytes, sha256
+The bundled `freedoom1.wad` is the default (BSD-3 licensed Freedoom 0.13.0,
+`28795076` bytes, sha256
 `7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d`). Each run
 validates the WAD header and reports filename, size, kind and SHA-256 without
 persisting the absolute path.
@@ -99,10 +96,10 @@ Responses are validated before use: labels must match exactly, each value must
 be a finite number in `[0, 1]`, and the sum must be within `0.05` of `1.0`
 (Jev rounds to two decimals, so a five-option question can legitimately sum to
 `0.99`). The argmax of each question yields `DuumControls`; the reported
-`confidence` is recorded but does not gate behavior by default, so `jev` matches
-`laya`'s argmax policy. On any transport or validation failure the decision
-raises and the run is **fail-closed**: headless aborts with `model_error`, and
-the windowed worker stops submitting decisions.
+`confidence` is recorded but does not gate behavior by default. On any transport
+or validation failure the decision raises and the run is **fail-closed**:
+headless aborts with `model_error`, and the windowed worker stops submitting
+decisions.
 
 Retry policy: `429`, `529`, `5xx` and transport errors retry with exponential
 backoff (honoring `retry-after`, capped at 10 s); `400`, `401`, `403`, `404` and
@@ -115,7 +112,7 @@ deterministic layer dodges predicted projectile impacts, rejects blocked
 movement, pulse-controls turning between slower model decisions, fires only
 through a valid corridor, uses doors and switches, restores a usable weapon,
 prioritizes critical health/ammo, and follows a WAD-derived subsector route to
-the exit. It is unchanged from `laya-duum`.
+the exit.
 
 The route uses Doom's actual SEGS/SSECTORS topology plus sampled within-sector
 connectivity, and the adapter adds Doom linedef special 23 (E1M2's blue-key
@@ -133,7 +130,7 @@ The matrix compares scripted, random, heuristic, raw Jev at 12 Hz, and assisted
 Jev at 5, 10, 12 and 20 Hz. A short 180-tick smoke run (3 simulated seconds)
 completed the whole matrix with 249 prediction calls and a total cost of
 `$0.0047`, which confirms the bookkeeping; longer runs are the tuning surface.
-Unlike Laya, Jev decisions take ~275 ms round-trip on the test machine, so the
+A Jev decision takes roughly 275 ms round-trip on the test machine, so the
 windowed worker replaces stale snapshots instead of blocking the 60 Hz loop, and
 headless wall time is dominated by the network.
 

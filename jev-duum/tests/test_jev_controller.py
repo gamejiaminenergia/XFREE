@@ -13,8 +13,6 @@ from jev_duum.types import DuumControls
 ROOT = Path(__file__).parents[1]
 DUUM_ROOT = Path(os.environ.get("JEV_DUUM_PATH", ROOT.parent / "duum"))
 WAD = ROOT / "freedoom1.wad"
-if not WAD.is_file():
-    WAD = ROOT.parent / "laya-duum" / "freedoom1.wad"
 HAS_FIXTURE = (DUUM_ROOT / "duum" / "engine.py").is_file() and WAD.is_file()
 
 

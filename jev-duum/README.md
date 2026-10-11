@@ -4,17 +4,13 @@
 pure-Python [Duum](https://github.com/hmofet/duum) engine from compact semantic
 state. Rendered pixels are never sent to the model.
 
-It is the sibling of [`laya-duum`](https://github.com/hadlock/laya-duum): the
-same engine, snapshot, deterministic assistance, recording and replay, with the
-local Laya checkpoint swapped for a remote judgment model. Deployment is
-therefore much lighter — only the standard library plus Duum, no PyTorch, no
-CUDA, no 0.8 GB checkpoint — at the cost of being **online**: every decision is
-one HTTP request.
+Deployment is deliberately thin: only the standard library plus Duum — no
+PyTorch, no CUDA, no local checkpoint. The trade-off is that Jev is a remote
+API, so every decision is one HTTP request.
 
 ## Credential
 
-Jev needs a TypeSafe API key. Put it in the git-ignored `./.env` (see
-`./.env`, already present locally) or export it:
+Jev needs a TypeSafe API key. Put it in the git-ignored `./.env` or export it:
 
 ```bash
 export TYPESAFE_API_KEY=...        # always wins over .env
@@ -39,9 +35,9 @@ bash play.sh              # windowed game with the decision panel
 bash play.sh --headless   # no window, JSON summary
 ```
 
-Duum is pinned to the same commit as `laya-duum`. The Freedoom Phase 1 IWAD is
-not copied here; the default resolves to `../laya-duum/freedoom1.wad`. Pass
-`--wad /path/to/file.wad` for another legally obtained IWAD.
+The bundled Freedoom Phase 1 IWAD (`freedoom1.wad`) is the default; it is
+validated by header and SHA-256 on every run. Pass `--wad /path/to/file.wad`
+for another legally obtained IWAD.
 
 Useful modes:
 
@@ -83,11 +79,13 @@ named-field state:
 - Commercial Doom WADs must never be committed.
 
 See [docs/JEV_INTEGRATION.md](docs/JEV_INTEGRATION.md) for architecture,
-benchmarking, recording and replay details. The implementation plan that
-produced this package lives at [`../docs/JEV_DUUM_PLAN.md`](../docs/JEV_DUUM_PLAN.md).
+benchmarking, recording and replay details, and
+[`../docs/JEV_DUUM_PLAN.md`](../docs/JEV_DUUM_PLAN.md) for the plan and measured
+results.
 
 ## Licensing
 
 Adapter code is Apache-2.0. Duum is MPL-2.0 and remains an external dependency.
-Freedoom Phase 1 is distributed under Freedoom's BSD 3-Clause license; see
-[FREEDOOM_LICENSE.txt](FREEDOOM_LICENSE.txt).
+See [NOTICE](NOTICE) for the upstream attribution this code is required to
+carry. Freedoom Phase 1 is distributed under Freedoom's BSD 3-Clause license;
+see [FREEDOOM_LICENSE.txt](FREEDOOM_LICENSE.txt).
