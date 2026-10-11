@@ -7,6 +7,8 @@ y después en el código**, nunca al revés.
 
 Implementación: `jev-duum/jev_duum/panel.py` (paleta y widgets) y
 `jev-duum/jev_duum/overlays.py` (unifilar y banda de estado del canvas).
+Ambos toman sus colores de `jev-duum/jev_duum/theme.py`, la única casa de la
+paleta (la de la pantalla y la del unifilar).
 Verificación visual offline, sin gastar API: `jev-duum/tools/preview_panel.py`.
 
 ## 1. Qué es esta pantalla
@@ -56,6 +58,36 @@ TRACK = "#3c3c3c"   # fondo de barra (cromo)
 El código de la paleta vive en `jev_duum/theme.py`: una sola fuente que
 importan `panel.py` y `telemetry.py`. `DESIGN.md` sigue siendo la fuente de
 verdad en prosa; `theme.py` es su casa en código.
+
+#### Paleta del unifilar
+
+El diagrama de la izquierda es un sinóptico, no un mapa de color: usa los
+mismos criterios (cromo plano, color reservado para lo anormal) pero con su
+propio juego de tonos apagados, porque sobre `BG` negro un unifilar necesita
+jerarquía de grises para que el agente y las amenazas lean por encima de la
+geometría. Vive también en `theme.py`, con prefijo `MAP_`:
+
+```python
+MAP_BACKDROP        = "#0a0c11"   # fondo del canvas del unifilar
+MAP_ROOM_FILL       = "#111620"   # relleno de sala
+MAP_ROOM_LINE       = "#232d3d"   # contorno de sala / hairline del canvas
+MAP_WALL            = "#556077"   # segmentos de pared
+MAP_DOOR            = "#c9a227"   # puertas
+MAP_EXIT            = "#ef5350"   # salida
+MAP_NUKAGE          = "#2f6b3a"   # charca de nukage
+MAP_WATER           = "#1f4f6b"   # charca de agua
+MAP_PLAYER          = "#65d8ff"   # el agente
+MAP_TARGET          = "#8ee8a8"   # objetivo alineado
+MAP_TARGET_TURN     = "#ffb74d"   # objetivo al que hay que girar
+MAP_TARGET_ASSISTED = "#ff7043"   # objetivo con fuego asistido
+MAP_ENEMY           = "#ef5350"   # enemigo despierto
+MAP_PROJECTILE      = "#ff8a80"   # proyectil entrante
+MAP_GUIDE           = "#b388ff"   # rumbo recomendado
+MAP_MUTED           = "#8b93a7"   # entidad dormida, leyenda, rótulos
+MAP_STALE_ERROR_BG  = "#6f1a1a"   # banda de estado: sin modelo
+MAP_STALE_WARN_BG   = "#6b3f00"   # banda de estado: decisiones obsoletas
+MAP_STALE_TEXT      = "#ffe7c2"   # texto de la banda de estado
+```
 
 Reglas de uso:
 

@@ -21,6 +21,30 @@ INFO = "#ffff00"      # reference information: limits, units, secondary
 OFF = "#808080"       # out of service / no data
 TRACK = "#3c3c3c"     # bargraph background (chrome, not information)
 
+# ── palette of the schematic automap and the canvas status band ──────────────
+# DESIGN.md §3.1.  Muted grays carry the geometry so the agent and the threats
+# read above it; the irregular colours are the map's own alarms (exit, nukage,
+# live enemy).  Kept here so no widget defines a colour of its own.
+MAP_BACKDROP = "#0a0c11"
+MAP_ROOM_FILL = "#111620"
+MAP_ROOM_LINE = "#232d3d"
+MAP_WALL = "#556077"
+MAP_DOOR = "#c9a227"
+MAP_EXIT = "#ef5350"
+MAP_NUKAGE = "#2f6b3a"
+MAP_WATER = "#1f4f6b"
+MAP_PLAYER = "#65d8ff"
+MAP_TARGET = "#8ee8a8"
+MAP_TARGET_TURN = "#ffb74d"
+MAP_TARGET_ASSISTED = "#ff7043"
+MAP_ENEMY = "#ef5350"
+MAP_PROJECTILE = "#ff8a80"
+MAP_GUIDE = "#b388ff"
+MAP_MUTED = "#8b93a7"
+MAP_STALE_ERROR_BG = "#6f1a1a"
+MAP_STALE_WARN_BG = "#6b3f00"
+MAP_STALE_TEXT = "#ffe7c2"
+
 # The panel's own tests import these names; the semantics are the ones above.
 GREEN, AMBER, RED = OK, WARN, ALARM
 

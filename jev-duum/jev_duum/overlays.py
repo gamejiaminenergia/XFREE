@@ -9,25 +9,28 @@ from __future__ import annotations
 
 import math
 
+from .theme import (
+    MAP_BACKDROP,
+    MAP_DOOR,
+    MAP_ENEMY,
+    MAP_EXIT,
+    MAP_GUIDE,
+    MAP_MUTED,
+    MAP_NUKAGE,
+    MAP_PLAYER,
+    MAP_PROJECTILE,
+    MAP_ROOM_FILL,
+    MAP_ROOM_LINE,
+    MAP_STALE_ERROR_BG,
+    MAP_STALE_TEXT,
+    MAP_STALE_WARN_BG,
+    MAP_TARGET,
+    MAP_TARGET_ASSISTED,
+    MAP_TARGET_TURN,
+    MAP_WALL,
+    MAP_WATER,
+)
 from .world_model import SVG_BOUNDS, duum_to_svg, svg_heading_degrees
-
-# ── palette (kept local so the overlays travel without the panel) ─────────────
-BACKDROP = "#0a0c11"
-ROOM_FILL = "#111620"
-ROOM_LINE = "#232d3d"
-WALL = "#556077"
-DOOR = "#c9a227"
-EXIT = "#ef5350"
-NUKAGE = "#2f6b3a"
-WATER = "#1f4f6b"
-PLAYER = "#65d8ff"
-TARGET = "#8ee8a8"
-TARGET_TURN = "#ffb74d"
-TARGET_ASSISTED = "#ff7043"
-ENEMY = "#ef5350"
-PROJECTILE = "#ff8a80"
-GUIDE = "#b388ff"
-MUTED = "#8b93a7"
 
 _GEOMETRY = None
 
@@ -69,9 +72,9 @@ class MiniMap:
             parent,
             width=self.width,
             height=self.height,
-            bg=BACKDROP,
+            bg=MAP_BACKDROP,
             highlightthickness=1,
-            highlightbackground=ROOM_LINE,
+            highlightbackground=MAP_ROOM_LINE,
         )
         self._last = None
         self._recompute_projection()
@@ -165,14 +168,14 @@ class MiniMap:
         for room in sense.ROOMS:
             x1, y1 = self.to_canvas(room.x1 * cell, room.y1 * cell)
             x2, y2 = self.to_canvas((room.x2 + 1) * cell, (room.y2 + 1) * cell)
-            canvas.create_rectangle(x1, y1, x2, y2, fill=ROOM_FILL, outline=ROOM_LINE)
+            canvas.create_rectangle(x1, y1, x2, y2, fill=MAP_ROOM_FILL, outline=MAP_ROOM_LINE)
 
     def _draw_pools(self, canvas, sense):
         for pool in sense.NUKAGE_POOLS:
-            self._oval(canvas, pool["cx"], pool["cy"], pool["rx"], pool["ry"], NUKAGE)
+            self._oval(canvas, pool["cx"], pool["cy"], pool["rx"], pool["ry"], MAP_NUKAGE)
         water = getattr(sense, "WATER_POOL", None)
         if water:
-            self._oval(canvas, water["cx"], water["cy"], water["rx"], water["ry"], WATER)
+            self._oval(canvas, water["cx"], water["cy"], water["rx"], water["ry"], MAP_WATER)
 
     def _oval(self, canvas, cx, cy, rx, ry, color):
         x1, y1 = self.to_canvas(cx - rx, cy - ry)
@@ -183,17 +186,17 @@ class MiniMap:
         for x1, y1, x2, y2 in sense.WALL_SEGMENTS:
             ax, ay = self.to_canvas(x1, y1)
             bx, by = self.to_canvas(x2, y2)
-            canvas.create_line(ax, ay, bx, by, fill=WALL, width=1)
+            canvas.create_line(ax, ay, bx, by, fill=MAP_WALL, width=1)
 
     def _draw_markers(self, canvas, sense):
         for door in sense.DOORS:
             cx, cy = self.to_canvas(door["x"] + door["w"] / 2, door["y"] + door["h"] / 2)
-            canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=DOOR, outline="")
+            canvas.create_oval(cx - 2, cy - 2, cx + 2, cy + 2, fill=MAP_DOOR, outline="")
         for exit_mark in sense.EXITS:
             cx, cy = self.to_canvas(
                 exit_mark["x"] + exit_mark["w"] / 2, exit_mark["y"] + exit_mark["h"] / 2
             )
-            canvas.create_rectangle(cx - 3, cy - 3, cx + 3, cy + 3, fill=EXIT, outline="")
+            canvas.create_rectangle(cx - 3, cy - 3, cx + 3, cy + 3, fill=MAP_EXIT, outline="")
 
     def _draw_sector_risk(self, canvas, cx, cy, readout):
         values = list(readout.sector_values)
@@ -243,7 +246,7 @@ class MiniMap:
             radius = 2.5
             canvas.create_oval(
                 ex - radius, ey - radius, ex + radius, ey + radius,
-                fill=ENEMY if enemy.attacking else MUTED, outline="",
+                fill=MAP_ENEMY if enemy.attacking else MAP_MUTED, outline="",
             )
         for projectile in snapshot.incoming_projectiles:
             world_angle = player.angle + projectile.bearing
@@ -252,15 +255,15 @@ class MiniMap:
                 player.y + projectile.distance * math.sin(world_angle),
             )
             x, y = self.to_canvas(px, py)
-            canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=PROJECTILE, outline="")
+            canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=MAP_PROJECTILE, outline="")
         if target is not None:
             x, y = next(position for item, position in placed if item is target)
             color = (
-                TARGET_ASSISTED
+                MAP_TARGET_ASSISTED
                 if aim_assisted
-                else TARGET
+                else MAP_TARGET
                 if target.aligned
-                else TARGET_TURN
+                else MAP_TARGET_TURN
             )
             canvas.create_oval(x - 6, y - 6, x + 6, y + 6, outline=color, width=2)
             canvas.create_line(x - 10, y, x - 6, y, fill=color)
@@ -276,7 +279,7 @@ class MiniMap:
             cx + 10 * dx, cy + 10 * dy,
             cx - 5 * dx + 5 * nx, cy - 5 * dy + 5 * ny,
             cx - 5 * dx - 5 * nx, cy - 5 * dy - 5 * ny,
-            fill=PLAYER, outline="#0a0c11",
+            fill=MAP_PLAYER, outline=MAP_BACKDROP,
         )
 
     def _draw_guide(self, canvas, cx, cy, heading, bearing_degrees):
@@ -288,16 +291,16 @@ class MiniMap:
             px + 5 * dx, py + 5 * dy,
             px - 3 * dx + 4 * nx, py - 3 * dy + 4 * ny,
             px - 3 * dx - 4 * nx, py - 3 * dy - 4 * ny,
-            outline=GUIDE, fill="", width=1,
+            outline=MAP_GUIDE, fill="", width=1,
         )
 
     def _draw_caption(self, canvas, readout):
         band = self.height - 18
-        canvas.create_rectangle(1, band, self.width - 1, self.height - 1, fill=BACKDROP,
+        canvas.create_rectangle(1, band, self.width - 1, self.height - 1, fill=MAP_BACKDROP,
                                 outline="")
         if readout is None or not readout.available:
             canvas.create_text(
-                8, self.height - 8, anchor="sw", fill=MUTED,
+                8, self.height - 8, anchor="sw", fill=MAP_MUTED,
                 text="sin modelo del mundo", font=("DejaVu Sans Mono", 8),
             )
             return
@@ -307,7 +310,7 @@ class MiniMap:
         if readout.route_steps is not None:
             parts.append(f"ruta {readout.route_steps}")
         canvas.create_text(
-            8, self.height - 8, anchor="sw", fill=MUTED,
+            8, self.height - 8, anchor="sw", fill=MAP_MUTED,
             text=" · ".join(parts), font=("DejaVu Sans Mono", 8),
         )
         self._draw_legend(canvas, band)
@@ -322,13 +325,13 @@ class MiniMap:
         y = band + 9
         x = self.width - 8
         entries = (
-            ("rumbo", GUIDE),
-            ("objetivo", TARGET),
-            ("agente", PLAYER),
+            ("rumbo", MAP_GUIDE),
+            ("objetivo", MAP_TARGET),
+            ("agente", MAP_PLAYER),
         )
         for label, color in entries:
             text = canvas.create_text(
-                x, y, anchor="se", fill=MUTED, text=label,
+                x, y, anchor="se", fill=MAP_MUTED, text=label,
                 font=("DejaVu Sans Mono", 8),
             )
             left = canvas.bbox(text)[0] - 4
@@ -368,15 +371,15 @@ class StaleOverlay:
             return
         width = int(float(canvas["width"]))
         if state[0] == "error":
-            color, text = "#6f1a1a", f"SIN MODELO · {error}"[:80]
+            color, text = MAP_STALE_ERROR_BG, f"SIN MODELO · {error}"[:80]
         else:
-            color, text = "#6b3f00", f"DECISIONES OBSOLETAS ×{stale}"
+            color, text = MAP_STALE_WARN_BG, f"DECISIONES OBSOLETAS ×{stale}"
         # Solid, not ``stipple="gray50"``: a one-pixel checkerboard shimmers on
         # a projector and reads as texture rather than as an alert.
         canvas.create_rectangle(
             0, 0, width, self.height, fill=color, outline="", tags="hud"
         )
         canvas.create_text(
-            width / 2, self.height / 2, text=text, fill="#ffe7c2",
+            width / 2, self.height / 2, text=text, fill=MAP_STALE_TEXT,
             font=("DejaVu Sans Mono", 10, "bold"), tags="hud",
         )
