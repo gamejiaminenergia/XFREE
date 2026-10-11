@@ -68,6 +68,12 @@ FONTS = {"mono": "DejaVu Sans Mono", "ui": "DejaVu Sans"}
 EVENT_H = 145
 # How many decisions the event list shows at once.
 EVENT_ROWS = 5
+# Fixed heights of the centre column's sections.  Only the decision box takes
+# the slack of the window; the other three are the same size in every state.
+GUARD_H = 132
+WHY_H = 106
+STRATEGY_H = 128
+SECTION_GAP = 8
 
 # Confidence bands, in words, because a bare 0.62 means nothing to a room.
 # The level decides the colour: normal states carry no colour at all.
@@ -200,6 +206,23 @@ class Panel:
     def set_title(self, text):
         if self.title.cget("text") != text.upper():
             self.title.configure(text=text.upper())
+
+    def set_height(self, pixels):
+        """Pin the box to an exact height.
+
+        A section is a fixed piece of the screen: if its height followed its
+        content, every panel below it would move on every refresh and the
+        operator would have to re-find everything.  What does not fit in the
+        box is clipped, and the event list is where the full history lives.
+        """
+
+        pixels = int(pixels)
+        if pixels == getattr(self, "_height", None):
+            return
+        self._height = pixels
+        self.frame.configure(height=pixels)
+        self.frame.pack_propagate(False)
+        self.frame.grid_propagate(False)
 
 
 class Flag:
@@ -490,6 +513,15 @@ def _controls_text(controls) -> str:
     return "   ".join(parts)
 
 
+def _clip(text, width):
+    """Trim a value to a fixed cell, so nothing beside it can move."""
+
+    text = str(text)
+    if width and len(text) > width:
+        return text[: max(1, width - 1)] + "…"
+    return text
+
+
 def _clip_to_cell(widget, text):
     """Never let a value widen its box.
 
@@ -502,10 +534,7 @@ def _clip_to_cell(widget, text):
         width = int(widget.cget("width"))
     except Exception:
         return text
-    text = str(text)
-    if width > 0 and len(text) > width:
-        return text[: max(1, width - 1)] + "…"
-    return text
+    return _clip(text, width)
 
 
 def _guard_motive(events) -> str:
@@ -780,7 +809,7 @@ class Dashboard:
         )
         self.alarm_count.pack(side="right", padx=(10, 0))
         self.link_flag = Flag(tk, right, width=15)
-        self.link_flag.label.pack(side="right")
+        self.link_flag.label.pack(side="right", pady=(2, 0))
 
     # -- left column: the game, the measurements and the diagram ------------
     def _build_game(self, window):
@@ -849,33 +878,37 @@ class Dashboard:
         panel = Panel(tk, self.center, "Decisión de la IA", expand=True)
         self.decision_panel = panel
         self.decision_flag = Flag(tk, panel.flag_holder, width=15)
-        self.decision_flag.label.pack(side="right")
+        self.decision_flag.label.pack(side="right", pady=(2, 0))
         self.axes: dict = {}
+        # The axes share the decision box's slack, so the only flexible box on
+        # the screen spends its extra height instead of collecting a gap.
         self.axes_body = tk.Frame(panel.body, bg=PANEL)
-        self.axes_body.pack(fill="x")
+        self.axes_body.pack(fill="both", expand=True)
 
         guard = Panel(tk, self.center, "Guardia determinista")
+        guard.set_height(GUARD_H)
         self.guard_panel = guard
         self.guard_flag = Flag(tk, guard.flag_holder, width=16)
-        self.guard_flag.label.pack(side="right")
+        self.guard_flag.label.pack(side="right", pady=(2, 0))
         self._guard_table, self.guard_fields = _table(
             tk, guard.body,
             (("PROPUESTO", "prop"), ("APLICADO", "appl")),
-            size=10,
+            size=10, value_width=30,
         )
         self.guard_body = tk.Frame(guard.body, bg=PANEL)
         self.guard_body.pack(fill="x", pady=(3, 0))
 
         why = Panel(tk, self.center, "Por qué · respuesta del modelo")
+        why.set_height(WHY_H)
         self.why_panel = why
+        # One clipped line per axis: a wrapped value would change the box.
         self._why_table, self.observations = _table(
             tk, why.body, [(title, axis) for axis, title, _ in AXES],
-            size=9,
+            size=9, value_width=44,
         )
-        for label in self.observations.values():
-            label.configure(wraplength=380, justify="left")
 
         strategy = Panel(tk, self.center, "Estrategia")
+        strategy.set_height(STRATEGY_H)
         self.strategy_panel = strategy
         self.strategy_head = tk.Label(
             strategy.body, text="", anchor="w", justify="left", bg=PANEL, fg=VALUE,
@@ -1200,7 +1233,7 @@ class Dashboard:
                 bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9), anchor="w",
             ).pack(anchor="w")
             return
-        for event in events:
+        for event in events[:3]:
             row = self.tk.Frame(self.guard_body, bg=PANEL)
             row.pack(fill="x", pady=1)
             self.tk.Label(
@@ -1208,10 +1241,8 @@ class Dashboard:
                 font=(FONTS["mono"], 9, "bold"), anchor="w",
             ).pack(side="left", padx=(0, 6))
             self.tk.Label(
-                row,
-                text=f"{event.reason}",
-                anchor="w", justify="left", bg=PANEL, fg=STATIC,
-                font=(FONTS["mono"], 9), wraplength=340,
+                row, text=_clip(event.reason, 44),
+                anchor="w", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9),
             ).pack(side="left")
 
     def _update_why(self, decision):
@@ -1221,10 +1252,12 @@ class Dashboard:
         strategy = getattr(decision, "strategy", None) if decision is not None else None
         if strategy:
             head = (
-                f"{strategy['mission']} · prioridad {strategy['priority']}\n"
-                f"avanzar={strategy['must_move']}   "
-                f"sostener {strategy['hold_streak']}/{strategy['max_hold_streak']}   "
-                f"{strategy['status']}"
+                _clip(f"{strategy['mission']} · prioridad {strategy['priority']}", 54) + "\n"
+                + _clip(
+                    f"avanzar={strategy['must_move']}  sostener "
+                    f"{strategy['hold_streak']}/{strategy['max_hold_streak']}  "
+                    f"{strategy['status']}", 54
+                )
             )
         else:
             head = "sin estrategia en este prompt"
@@ -1234,10 +1267,10 @@ class Dashboard:
             self._strategy_sig = plan_sig
             for child in self.strategy_plan.winfo_children():
                 child.destroy()
-            for step in plan_sig:
+            for step in plan_sig[:3]:
                 self.tk.Label(
-                    self.strategy_plan, text=f"· {step}", anchor="w", justify="left",
-                    bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9), wraplength=420,
+                    self.strategy_plan, text=_clip(f"· {step}", 48), anchor="w",
+                    bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9),
                 ).pack(fill="x")
 
     # -- situation: diagram tags, threats and route --------------------------
@@ -1264,13 +1297,18 @@ class Dashboard:
         }
         for key, value in fields.items():
             self._label(f"world-{key}", self.world_fields[key], value, fg=VALUE)
-        threats = "\n".join(
+        lines = [
             f"{threat['bearing_degrees']:>6.0f}°  {threat['distance_px']:>5.0f}px"
             f"  AMENAZA {threat['threat_score']:>4}  "
             f"{'LOS' if threat['line_of_sight'] else 'SIN LOS'}"
-            for threat in readout.top_threats
-        ) or "sin amenazas a la vista"
-        self._label("world-threats", self.world_threats, threats, fg=STATIC)
+            for threat in readout.top_threats[:3]
+        ]
+        if not lines:
+            lines = ["sin amenazas a la vista"]
+        while len(lines) < 3:
+            lines.append("")
+        self._label("world-threats", self.world_threats,
+                    "\n".join(f"{line:<32}" for line in lines), fg=STATIC)
 
     # -- counters and accounting ---------------------------------------------
     def _account(self, decision):
