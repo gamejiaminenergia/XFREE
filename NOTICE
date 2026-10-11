@@ -1,0 +1,27 @@
+jev-duum
+Copyright 2026 jev-duum contributors
+
+Adapter code is adapted from laya-duum (Apache-2.0):
+https://github.com/hadlock/laya-duum
+Copyright laya-duum contributors. Licensed under Apache-2.0.
+
+That project's NOTICE file carries upstream attributions — Laya
+(https://github.com/NandhaKishorM/laya, Apache-2.0) and laya-mlx
+(https://github.com/mizorewww/laya-mlx, Apache-2.0) — covering the prompt
+construction, recording/export and benchmark tooling reused here. Those
+attributions are reproduced in this file because Apache-2.0 section 4(d)
+requires derivative works to retain them. They are attribution only: no Laya
+code, checkpoint or runtime is used by this distribution.
+
+Changes in this distribution: the local decision backend is replaced by a
+remote TypeSafe System One (Jev) HTTP client. One request per decision carries
+the three choice questions against a single combined state; token accounting,
+cost reporting and per-question confidence recording are added.
+
+No model weights are included in this repository: Jev is a remote API, and the
+adapter ships only standard-library HTTP code. This is an independent project,
+not an official Convai Innovations, Apple or TypeSafe release.
+
+This distribution includes Freedoom: Phase 1 content, copyright 2001-2024
+Contributors to the Freedoom project, under the BSD 3-Clause license. See
+FREEDOOM_LICENSE.txt.

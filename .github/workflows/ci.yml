@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
+      # Duum is a pinned external dependency, never vendored. Check out the
+      # exact commit the adapter validates so the snapshot tests can run.
+      - name: Check out the pinned Duum engine
+        uses: actions/checkout@v4
+        with:
+          repository: hmofet/duum
+          ref: 87f4827f88b005515d92e6ed3c3756641ad2b0d0
+          path: duum
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync the environment
+        working-directory: jev-duum
+        run: uv sync --frozen
+
+      - name: Lint
+        working-directory: jev-duum
+        run: uv run --no-sync ruff check jev_duum tests
+
+      - name: Tests
+        working-directory: jev-duum
+        run: uv run --no-sync python -m pytest -q
