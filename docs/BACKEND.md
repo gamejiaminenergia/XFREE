@@ -51,6 +51,12 @@ paleta de `theme.py` traducida a ANSI y la vista del juego en medios bloques
 UTF-8. Es `curses`, de la stdlib: **cero dependencias nuevas**, y funciona por
 SSH sin X.
 
+Pide los píxeles al motor **solo cuando los dibuja**: en rejilla estrecha (menos
+de 112 columnas, sin vista del juego) apaga `Session.set_pixels`, porque copiar
+el buffer RGB cada frame era la mayor parte del coste por paso. Medido: 59
+ticks/s en estrecho (99 % del tiempo real) frente a 38 ticks/s en ancho (63 %),
+que es lo que cuesta pintar el juego celda a celda.
+
 Teclas: `q` salir, `p` pausa, `+`/`-` ritmo de decisión, `g` vista del juego.
 
 ### `jev-service`

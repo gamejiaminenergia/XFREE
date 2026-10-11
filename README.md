@@ -21,16 +21,57 @@ standard library + Duum only. A decision costs about $0.00003–$0.00005.
 
 **To run it, just one command:** `./main.sh`
 
+## How to run it — every command
+
+| What you get | Command | Needs |
+|---|---|---|
+| **The game window**: Duum + the SCADA panel | `./main.sh` | X + Tk, API key |
+| **The same panel in the terminal** (works over SSH) | `./main.sh --tui` | a terminal, API key |
+| **The panel in a browser** + the HTTP/WebSocket API | `cd jev-service && uv sync && uv run --no-sync jev-service` | API key (or `--fake`, below) |
+| **No UI at all**: a JSON summary on stdout | `./main.sh --headless --ticks 600` | API key |
+| **You play** instead of the AI | `./main.sh --pilot manual` | X + Tk |
+| **Offline baseline** — no network, no key, no cost | `./main.sh --pilot scripted --headless --ticks 600` | nothing |
+| **A video** of the game window | `bash scripts/record.sh --launch --window` | X + Tk, API key |
+| **A video with no X** (game view only) | `bash scripts/record.sh --from-backend --fake` | nothing |
+
+`./main.sh` is the wrapper: it finds or clones the pinned engine, syncs the
+environment, applies the balance mod and forwards any extra flag to the CLI, so
+`./main.sh --tui` and `./main.sh --headless` always use the right engine.
+
+**The key.** The first run asks for `TYPESAFE_API_KEY` once, saves it in the
+git-ignored `jev-duum/.env` and never prints it. Everything above reads it from
+there; an exported `TYPESAFE_API_KEY` always wins. Add `--log-calls` to store
+every request in the optional audit log (see below).
+
+**Try it without spending anything.** `--fake` answers with a local,
+deterministic model:
+
+```bash
+cd jev-service && uv sync && uv run --no-sync jev-service --fake   # browser panel, 0 $
+cd jev-duum && uv run --no-sync python tools/preview_panel.py      # offline screenshots, 0 $
+```
+
+**How to stop it.** `q` in the terminal UI, `Ctrl-C` in the wrapper, `F11` to
+toggle fullscreen and `CERRAR` (top-right) to close the window. The HTTP service
+stops with `Ctrl-C`. Recordings stop with `Ctrl-C` and always close the file.
+
+**What it costs.** At the default 10 decisions/s a live run is about
+**$0.02 per minute** (~$1.20 an hour). `--fake`, the offline baselines and the
+offline tools cost nothing. The panel shows the running total in `COSTE`.
+
 ## What is in this repository
 
 | Path | What it is |
 |---|---|
-| `jev-duum/` | The pilot: snapshot → TypeSafe request → guard → engine, the Tk inspector, the offline prompt harness and the bundled Freedoom IWAD. |
+| `jev-duum/` | The pilot: snapshot → TypeSafe request → guard → engine, the Tk inspector, the terminal UI, the offline prompt harness and the bundled Freedoom IWAD. |
+| `jev-service/` | Optional HTTP/WebSocket frontend over the same session (FastAPI) plus the browser panel. Its own `pyproject.toml`, so the pilot keeps one dependency. |
 | `map/` | Schematic E1M1 knowledge (`sense.py`, `heuristics.py`, `doom_map.svg`), stdlib only; vendored into `jev_duum/_map/`. |
 | `jev-log/` | Small Express API that stores one document per model call in MongoDB. |
 | `docker-compose.yml` | MongoDB 7 + that API + Mongo Express, for the passive audit log. |
+| `scripts/` | `setup_duum.sh` (pinned engine) and `record.sh` (video, two ways). |
+| `video/` | Recordings: the index is versioned, the media is not. |
 | `docs/` | Plans, architecture notes and the measured results. |
-| `scripts/setup_duum.sh` | Clones the pinned Duum engine at the exact commit this code expects. |
+| `docs/BACKEND.md` | The backend/frontend split and the HTTP API in detail. |
 
 Duum itself is **not** vendored — it stays an external, pinned dependency.
 
@@ -38,8 +79,9 @@ Duum itself is **not** vendored — it stays an external, pinned dependency.
 
 - Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/)
 - The pinned Duum checkout (fetched for you by `./main.sh`)
-- A TypeSafe API key
-- Optional: Tk for the game window, Docker for the audit log
+- A TypeSafe API key (except for `--fake`, the offline baselines and the tools)
+- Optional: Tk for the game window, Docker for the audit log, a GPU for faster
+  NVENC encoding when recording
 
 ## Quickstart
 
@@ -57,9 +99,11 @@ the right**.
 <summary>Optional flags — you do not need any of these</summary>
 
 ```bash
-./main.sh --windowed                 # normal window instead of fullscreen
+./main.sh --windowed                 # a normal window instead of fullscreen
+./main.sh --tui                      # the panel in the terminal, no window at all
 ./main.sh --headless --ticks 600     # no window, JSON summary
 ./main.sh --pilot manual             # you play instead of the AI
+./main.sh --prompt-version v3        # pick a request shape (default: v3w)
 JEV_VANILLA=1 ./main.sh              # skip the balance mod
 ```
 
@@ -110,7 +154,7 @@ Nothing is behind a tab and nothing scrolls: everything is always on screen.
 Launch it with `./main.sh`.
 
 <details>
-<summary>Rehearse for free, offline — dev tool, no API key, no network</summary>
+<summary>Rehearse for free, offline — dev tools, no API key, no network</summary>
 
 ```bash
 cd jev-duum
@@ -125,39 +169,68 @@ save the PNG.
 
 </details>
 
-## Run modes
+## The terminal panel — `./main.sh --tui`
 
-<details>
-<summary>Advanced — prompt versions, offline baselines and evaluations</summary>
+The same screen, drawn with `curses` instead of Tk: no window, no X, and it
+works over SSH. The engine runs headless and the panel is text — the same
+palette (translated to ANSI) and the same fixed grid as the window.
 
 ```bash
-# Jev plays, windowed and fullscreen by default (--windowed for a normal window)
-uv run --no-sync jev-duum --pilot jev-assisted
-
-# The same panel in the terminal: headless engine, no X, works over SSH
-uv run --no-sync jev-duum --pilot jev-assisted --tui
-
-# The same session over HTTP + WebSocket, with the panel in a browser
-cd ../jev-service && uv sync && uv run --no-sync jev-service --fake
-
-# Same, without the world-model block, to A/B it
-uv run --no-sync jev-duum --pilot jev-assisted --no-world-model --headless --ticks 600
-
-# Human plays
-uv run --no-sync jev-duum --pilot manual
-
-# Deterministic offline baselines (never touch the network)
-uv run --no-sync jev-duum --pilot scripted --headless --ticks 600
-
-# Eight paired policy experiments with real tokens (~$0.78 / 10 min at 10 Hz)
-uv run --no-sync jev-duum-eval --map E1M1 --ticks 3600
+./main.sh --tui
 ```
 
-Choose the request shape with `--prompt-version v1|v2|v3|v3w` (default `v3w`).
-See [`jev-duum/README.md`](jev-duum/README.md) for the prompt tables, the
-offline prompt harness and the measured results.
+Keys: `q` quits, `p` pauses, `+`/`-` change the decision rate, `g` toggles the
+game view. On exit it prints the same JSON summary as a headless run.
 
-</details>
+**Pick the size, it matters.** Below ~112 columns it draws a single column
+(decision + events) and runs at the full engine rate: **59 ticks/s measured,
+99% of real time**. From ~112 columns it adds the three-column layout with the
+game as ANSI half blocks, and painting that costs more than the engine itself:
+**38 ticks/s, about 63% of real time**. It is the same session and the same
+engine in both cases — the wide view is simply expensive to draw.
+
+## The browser panel and the HTTP API — `jev-service/`
+
+```bash
+cd jev-service
+uv sync
+uv run --no-sync jev-service --fake     # local model: 0 $, no key, no cost
+#   or, with real Jev (reads jev-duum/.env):
+uv run --no-sync jev-service
+```
+
+Then open <http://127.0.0.1:8000>. It listens on localhost only and the API key
+never leaves the server.
+
+| Endpoint | What it gives |
+|---|---|
+| `GET /api/state` | the latest frame as JSON: player, episode, worker, decision and the full semantic `snapshot` (`?full=0` drops it) |
+| `GET /api/meta` | pilot, model, prompt version, mission, engine commit, WAD |
+| `GET /api/frame.png` | the engine frame as PNG (`/api/frames.stream` for a plain `<img>`) |
+| `WS /ws` | push of `{seq, state}` |
+| `POST /api/control` | `{"paused": true}`, `{"decision_rate": 8}` (`--control-token` if exposed) |
+
+```bash
+curl -s localhost:8000/api/state | jq .decision.applied
+```
+
+Details, and the reason the engine is never touched by a request, in
+[`docs/BACKEND.md`](docs/BACKEND.md).
+
+## Recording video
+
+```bash
+bash scripts/record.sh --launch --window      # the SCADA panel, from the screen
+bash scripts/record.sh --from-backend --fake  # the game only, no X, exact frames
+```
+
+Clips land in `video/<tipo>/` with a sortable name and a `.json` sidecar
+(encoder, resolution, duration, engine commit). They stop with `Ctrl-C` and are
+never left half-written. The two modes are **not** interchangeable: screen
+capture is the only one that shows the panel (and `--window` is what keeps other
+monitors out of the clip), while `--from-backend` records the engine's own
+frames — exact and desktop-free, but game view only. See
+[`video/README.md`](video/README.md).
 
 ## Session telemetry
 
@@ -170,10 +243,8 @@ average cost; and a previous→current control line. They redraw on a throttle
 (~3 Hz) from bounded buffers, never touch the 60 Hz loop, and — like every panel
 — never change size with their data.
 
-The window starts fullscreen and reflows on resize: below 1600 px the bottom
-strip stacks `EVENTOS` over `BALANCE` instead of overflowing. `F11` toggles
-fullscreen; because there is no title bar then, the top-right corner also
-carries `F11` and `CERRAR`.
+The Tk window starts fullscreen and reflows on resize: below 1600 px the bottom
+strip stacks `EVENTOS` over `BALANCE` instead of overflowing.
 
 ## Audit log (optional)
 
@@ -194,29 +265,37 @@ never raises. `JEV_NO_LOG=1` disables it, `JEV_LOG_URL` points elsewhere.
 
 ```bash
 cd jev-duum
-uv run --no-sync ruff check jev_duum tests
-uv run --no-sync python -m pytest -q          # 219 pass, 5 skipped (live API)
+uv run --no-sync ruff check jev_duum tests tools
+uv run --no-sync python -m pytest -q          # 220 pass, 5 skipped (live API)
+
+cd ../jev-service                             # the HTTP frontend, own dependencies
+uv sync && uv run --no-sync ruff check jev_service tests
+uv run --no-sync pytest -q                    # 12 pass, no engine, no network
 ```
 
-The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
+The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). If your
+sibling `duum/` has commits on top of the pin, point the suite at a worktree of
+the pinned commit instead of touching the engine:
+`JEV_DUUM_PATH=/path/to/duum-pinned uv run --no-sync python -m pytest -q`. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions, including why
 `jev_duum/_map/` is excluded from linting.
 
 ## Documentation
 
+- [`docs/BACKEND.md`](docs/BACKEND.md) — **current**: the backend/frontend
+  split, the terminal UI, the HTTP service and recording from the engine's own
+  frames.
+- [`DESIGN.md`](DESIGN.md) — **current**: the HMI style guide (transmission
+  SCADA discipline) that `panel/`, `theme.py`, `telemetry/` and the terminal UI
+  implement.
+- [`docs/REFACTOR.md`](docs/REFACTOR.md) — the MVC/SOLID refactor of the big
+  modules into packages, its frozen contracts and how to revert it.
 - [`docs/JEV_DUUM_PLAN.md`](docs/JEV_DUUM_PLAN.md) — the plan and the measured
   results (prompts, tokens, guard interventions, live runs).
 - [`docs/DOOM_JEV_HEURISTICS_PLAN.md`](docs/DOOM_JEV_HEURISTICS_PLAN.md) — the
   schematic world model that rides inside `v3w` requests.
-- [`docs/UI_IMPROVEMENT_PLAN.md`](docs/UI_IMPROVEMENT_PLAN.md) — the inspector
-  redesign, fullscreen reflow and request/response detail.
-- [`DESIGN.md`](DESIGN.md) — **current**: the HMI style guide (transmission
-  SCADA discipline) that `panel/`, `theme.py` and `telemetry/` implement.
-- [`docs/BACKEND.md`](docs/BACKEND.md) — **current**: the backend/frontend
-  split, the terminal UI (`--tui`), the HTTP service and recording from the
-  engine's own frames.
-- [`docs/REFACTOR.md`](docs/REFACTOR.md) — the MVC/SOLID refactor of the big
-  modules into packages, its frozen contracts and how to revert it.
+- [`docs/UI_IMPROVEMENT_PLAN.md`](docs/UI_IMPROVEMENT_PLAN.md) —
+  the inspector redesign, fullscreen reflow and request/response detail.
 - [`docs/AI_DECISION_STAGE_PLAN.md`](docs/AI_DECISION_STAGE_PLAN.md) — the
   decision-first layout for a live AI talk (now the single window).
 - [`jev-duum/docs/JEV_INTEGRATION.md`](jev-duum/docs/JEV_INTEGRATION.md) —

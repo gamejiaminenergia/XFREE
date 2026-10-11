@@ -164,6 +164,10 @@ class TuiApp:
         else:
             left, centre, right = 0, max(30, width - 4), 0
 
+        # Only pay for the engine's pixels when they are actually on screen: the
+        # copy is most of the per-step cost and a narrow layout never draws it.
+        self.session.set_pixels(bool(self.show_game and left))
+
         top = BANNER_H + 1
         body = max(4, height - top - BOTTOM_H - 2)
 

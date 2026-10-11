@@ -103,6 +103,20 @@ def test_pixels_can_be_turned_off_for_data_only_frontends():
     assert frames[-1].snapshot is not None
 
 
+def test_pixels_can_be_toggled_while_a_session_runs():
+    """A frontend that stops drawing the game must stop paying for its frames."""
+
+    modules = load_duum(DUUM_ROOT, frontend=False)
+    runtime = DuumRuntime(modules, WAD, "E1M1", 160, 100)
+    session = Session(runtime, _controller(), decision_rate=10.0, frame_every=1)
+    assert session.step().rgb is not None
+    assert session.set_pixels(False) is False
+    assert session.step().rgb is None
+    assert session.set_pixels(True) is True
+    assert session.step().rgb is not None
+    session.close()
+
+
 def test_the_model_is_asked_at_the_requested_rate():
     frames, summary = _run(180, decision_rate=10.0)
     # 3 simulated seconds at 10 Hz: allow the first (immediate) plus scheduling.

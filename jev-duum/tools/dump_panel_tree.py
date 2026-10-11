@@ -35,7 +35,7 @@ import jev_duum.controller as controller_module  # noqa: E402
 controller_module.time.perf_counter = lambda: 0.0
 
 from jev_duum.controller import JevDuumController  # noqa: E402
-from jev_duum.integration import load_duum  # noqa: E402
+from jev_duum.integration import default_duum_checkout, load_duum  # noqa: E402
 from jev_duum.panel import Dashboard  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
 from jev_duum.types import DuumControls  # noqa: E402
@@ -115,7 +115,7 @@ def dump(widget) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="dump_panel_tree", description=__doc__)
-    parser.add_argument("--duum-path", type=Path, default=ROOT.parent / "duum")
+    parser.add_argument("--duum-path", type=Path, default=default_duum_checkout())
     parser.add_argument("--wad", type=Path, default=default_wad_path())
     parser.add_argument("--map", dest="map_name", default="E1M1")
     parser.add_argument("--prompt-version", default="v3w")

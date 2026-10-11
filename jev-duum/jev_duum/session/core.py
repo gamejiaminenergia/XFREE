@@ -239,6 +239,17 @@ class Session:
         self.paused = bool(paused)
         return self.paused
 
+    def set_pixels(self, enabled: bool) -> bool:
+        """Turn frame production on or off.
+
+        A frontend that is not drawing the game (a narrow terminal, a data-only
+        consumer) should not pay for copying the engine's RGB buffer every
+        frame: that copy is most of the per-step cost.
+        """
+
+        self.pixels = bool(enabled)
+        return self.pixels
+
     def set_decision_rate(self, rate: float) -> float:
         rate = float(rate)
         if rate <= 0:

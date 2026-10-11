@@ -98,7 +98,7 @@ jev_duum/
 ## Verificación
 
 - `ruff check jev_duum tests tools` — limpio.
-- `pytest -q` — **219 passed, 5 skipped** (los 151 originales, los 28 de
+- `pytest -q` — **220 passed, 5 skipped** (los 151 originales, los 28 de
   contrato y superficie del refactor, y los 40 que añadieron el núcleo
   headless, la política de tick, la TUI y el servicio).
 - **Contrato de Jev congelado**: `tests/test_jev_prompt_contract.py` (hash de

@@ -29,8 +29,22 @@ class DuumIntegrationError(RuntimeError):
 
 
 def default_duum_checkout() -> Path | None:
-    sibling = Path(__file__).resolve().parents[2] / "duum"
-    return sibling if (sibling / "duum" / "engine.py").is_file() else None
+    """The pinned Duum checkout, resolved the same way the wrapper does.
+
+    ``./main.sh`` either uses the sibling ``duum/`` (when it is already at the
+    pin) or a ``duum-<short-sha>`` worktree next to the repository.  Tools that
+    must work with no arguments look for both, so "just run it" does not need a
+    ``--duum-path``.
+    """
+
+    here = Path(__file__).resolve()
+    inside = here.parents[2] / "duum"  # <repo>/duum
+    beside = here.parents[3] / f"duum-{DUUM_COMMIT[:7]}"  # <parent>/duum-<sha7>
+    if _checkout_commit(inside) == DUUM_COMMIT:
+        return inside
+    if (beside / "duum" / "engine.py").is_file():
+        return beside
+    return inside if (inside / "duum" / "engine.py").is_file() else None
 
 
 @dataclass(frozen=True, slots=True)

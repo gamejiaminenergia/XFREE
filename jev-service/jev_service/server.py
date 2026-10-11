@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 
 from jev_duum.controller import JevDuumController
+from jev_duum.env import load_local_env
 from jev_duum.integration import DuumRuntime, default_duum_checkout, load_duum
 from jev_duum.session.core import Session
 from jev_duum.wad import default_wad_path, resolve_wad
@@ -72,6 +73,9 @@ def build_session(args, wad):
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    # Same credential path as the CLI: an exported TYPESAFE_API_KEY wins, and
+    # otherwise jev-duum/.env is read (the file the wrapper writes).
+    load_local_env()
     wad = resolve_wad(args.wad)
     session, modules, controller, (width, height) = build_session(args, wad)
 

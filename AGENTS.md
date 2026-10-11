@@ -58,7 +58,7 @@ cd jev-duum && uv sync                          # stdlib + Duum only
 uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)
 uv run --no-sync jev-duum --pilot jev-assisted --tui   # same panel, in the terminal
 uv run --no-sync ruff check jev_duum tests tools # lint
-uv run --no-sync python -m pytest -q            # 219 pass, 5 skip
+uv run --no-sync python -m pytest -q            # 220 pass, 5 skip
 docker compose up -d                            # audit log :27017/:3000/:8081
 bash scripts/record.sh --launch --window        # graba la partida en video/
 bash scripts/record.sh --from-backend           # vídeo sin X (solo la vista del juego)

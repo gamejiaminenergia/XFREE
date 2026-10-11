@@ -30,7 +30,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from jev_duum.controller import JevDuumController  # noqa: E402
-from jev_duum.integration import load_duum  # noqa: E402
+from jev_duum.integration import default_duum_checkout, load_duum  # noqa: E402
 from jev_duum.panel import Dashboard, run_jev_window  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
 from jev_duum.types import DuumControls  # noqa: E402
@@ -118,7 +118,7 @@ def _grab(root, out: Path, name: str) -> bool:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="preview_panel", description=__doc__)
-    parser.add_argument("--duum-path", type=Path, default=ROOT.parent / "duum")
+    parser.add_argument("--duum-path", type=Path, default=default_duum_checkout())
     parser.add_argument("--wad", type=Path, default=default_wad_path())
     parser.add_argument("--map", dest="map_name", default="E1M1")
     parser.add_argument("--prompt-version", default="v3w")
