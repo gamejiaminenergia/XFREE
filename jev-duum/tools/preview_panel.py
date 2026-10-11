@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 
 from jev_duum.controller import JevDuumController  # noqa: E402
 from jev_duum.integration import load_duum  # noqa: E402
-from jev_duum.panel import Dashboard  # noqa: E402
+from jev_duum.panel import Dashboard, run_jev_window  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
 from jev_duum.types import DuumControls  # noqa: E402
 from jev_duum.wad import default_wad_path, resolve_wad  # noqa: E402
@@ -126,6 +126,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the Duum commit-pin check (the UI only needs snapshot fields).",
     )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help=(
+            "Open the real window and run the real 60 Hz loop with the model "
+            "answered locally: full-speed review of the interface at no API cost."
+        ),
+    )
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help="With --watch, fill the screen instead of opening a window (F11 toggles).",
+    )
     return parser
 
 
@@ -146,6 +159,26 @@ def main(argv=None) -> int:
         )
     except Exception as error:  # integration errors are already descriptive
         parser.error(str(error))
+
+    if args.watch:
+        # The real window, the real loop, the real panel: only the model is
+        # answered locally.  This is the pass a screenshot cannot replace —
+        # cadence, flicker and resizing only exist in a running window.
+        controller = JevDuumController(
+            client=FakeJevClient(),
+            assisted=not args.raw,
+            prompt_version=args.prompt_version,
+            world_model=True,
+            pilot="jev-raw" if args.raw else "jev-assisted",
+        )
+        run_jev_window(
+            modules,
+            str(wad.path),
+            controller,
+            map_name=args.map_name,
+            fullscreen=args.fullscreen,
+        )
+        return 0
 
     modules.desktop.use_clock(None)
     modules.desktop.set_keys(0)
