@@ -6,7 +6,7 @@ import random
 
 from . import reflex
 from .hunt import HuntTracker, compute_hunt
-from .types import DuumControls
+from .types import MOVEMENTS, DuumControls
 
 
 def scripted_controls(tick: int) -> DuumControls:
@@ -36,7 +36,7 @@ class RandomPilot:
 
     def decide(self, _snapshot) -> DuumControls:
         return DuumControls(
-            self.random.choice(("forward", "back", "strafe_left", "strafe_right", "hold")),
+            self.random.choice(MOVEMENTS),
             self.random.choice(("left", "straight", "right")),
             self.random.choice(("fire", "use", "neither")),
         )

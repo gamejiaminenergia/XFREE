@@ -67,7 +67,7 @@ state:
 
 | Question | Choices |
 |---|---|
-| movement | forward, back, strafe left, strafe right, hold |
+| movement | forward, forward left, forward right, strafe left, strafe right, back left, back right, back, hold |
 | aim | left, straight, right |
 | interaction | fire, use, neither |
 

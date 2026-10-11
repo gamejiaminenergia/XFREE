@@ -14,13 +14,22 @@ from .snapshot import DuumSnapshot
 
 MOVEMENT_ANGLES = {
     "forward": 0.0,
+    "forward_left": math.pi / 4,
+    "forward_right": -math.pi / 4,
     "strafe_left": math.pi / 2,
     "strafe_right": -math.pi / 2,
+    "back_left": 3 * math.pi / 4,
+    "back_right": -3 * math.pi / 4,
     "back": math.pi,
 }
 
-# When two directions close the same distance, prefer not to retreat.
-_PREFERENCE = ("forward", "strafe_left", "strafe_right", "back")
+# The eight directions, ordered by tie-break preference: when two close the same
+# distance, the earlier one wins.  ``hold`` is not a direction.
+DIRECTIONS = tuple(MOVEMENT_ANGLES)
+
+# When two directions close the same distance, prefer not to retreat: forward
+# first, then the forward diagonals, then the pure strafes, then backward.
+_PREFERENCE = DIRECTIONS
 
 
 def progress_scores(bearing: float | None) -> dict[str, float]:

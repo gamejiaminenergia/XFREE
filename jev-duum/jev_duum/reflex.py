@@ -17,7 +17,12 @@ from __future__ import annotations
 import math
 from dataclasses import replace
 
-from .geometry import best_clear_movement, best_progress_movement, progress_scores
+from .geometry import (
+    DIRECTIONS,
+    best_clear_movement,
+    best_progress_movement,
+    progress_scores,
+)
 from .snapshot import DuumSnapshot
 from .types import AssistanceEvent, DuumControls
 
@@ -226,7 +231,7 @@ def _committed_movement(
     safe = {option.name for option in snapshot.movement_options if option.safe}
     candidates = [
         (scores.get(name, -1.0), name)
-        for name in ("forward", "strafe_left", "strafe_right", "back")
+        for name in DIRECTIONS
         if name in safe
     ]
     if not candidates:

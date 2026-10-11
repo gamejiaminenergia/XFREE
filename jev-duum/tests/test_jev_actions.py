@@ -9,11 +9,12 @@ from jev_duum.actions import (
     A_TURN_LEFT,
     A_TURN_RIGHT,
     A_USE,
+    MOVEMENT_MASKS,
     SyntheticInput,
     controls_to_mask,
     ensure_usable_weapon,
 )
-from jev_duum.types import DuumControls
+from jev_duum.types import MOVEMENTS, DuumControls
 
 
 @pytest.mark.parametrize(
@@ -23,6 +24,10 @@ from jev_duum.types import DuumControls
         (DuumControls("back"), A_BACK),
         (DuumControls("strafe_left"), A_STRAFE_LEFT),
         (DuumControls("strafe_right"), A_STRAFE_RIGHT),
+        (DuumControls("forward_left"), A_FORWARD | A_STRAFE_LEFT),
+        (DuumControls("forward_right"), A_FORWARD | A_STRAFE_RIGHT),
+        (DuumControls("back_left"), A_BACK | A_STRAFE_LEFT),
+        (DuumControls("back_right"), A_BACK | A_STRAFE_RIGHT),
         (DuumControls(aim="left"), A_TURN_LEFT),
         (DuumControls(aim="right"), A_TURN_RIGHT),
         (DuumControls(interaction="fire"), A_FIRE),
@@ -37,6 +42,25 @@ def test_each_semantic_control_maps_to_documented_host_bit(controls, expected):
 def test_control_dimensions_combine_as_a_bitmap():
     controls = DuumControls("strafe_left", "right", "fire")
     assert controls_to_mask(controls) == A_STRAFE_LEFT | A_TURN_RIGHT | A_FIRE
+
+
+def test_every_movement_token_has_a_host_mask():
+    assert set(MOVEMENT_MASKS) == set(MOVEMENTS)
+
+
+def test_a_diagonal_holds_both_movement_axes_at_once():
+    # The whole point of the extra tokens: the mask carries two movement bits,
+    # which is what let Duum corner before the adapter could only send one.
+    for diagonal, forward_axis, strafe_axis in (
+        ("forward_left", "forward", "strafe_left"),
+        ("forward_right", "forward", "strafe_right"),
+        ("back_left", "back", "strafe_left"),
+        ("back_right", "back", "strafe_right"),
+    ):
+        mask = controls_to_mask(DuumControls(diagonal))
+        assert mask == MOVEMENT_MASKS[forward_axis] | MOVEMENT_MASKS[strafe_axis]
+        assert mask != MOVEMENT_MASKS[forward_axis]
+        assert mask != MOVEMENT_MASKS[strafe_axis]
 
 
 @pytest.mark.parametrize(

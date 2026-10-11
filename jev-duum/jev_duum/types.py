@@ -4,7 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-MOVEMENTS = ("forward", "back", "strafe_left", "strafe_right", "hold")
+# The eight compass directions a Doom player can hold at once, plus standing
+# still.  Duum combines the movement bits, so a diagonal is forward on one axis
+# and a strafe on the other, held in the same tick; the adapter used to be able
+# to send only one bit, which is why the player could not corner while walking.
+MOVEMENTS = (
+    "forward",
+    "forward_left",
+    "forward_right",
+    "strafe_left",
+    "strafe_right",
+    "back_left",
+    "back_right",
+    "back",
+    "hold",
+)
 AIMS = ("left", "straight", "right")
 INTERACTIONS = ("fire", "use", "neither")
 

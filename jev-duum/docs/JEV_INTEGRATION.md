@@ -145,8 +145,8 @@ geometry, so guard and plan never fight each other.
       "hold_streak": 0,
       "max_hold_streak": 5,
       "guide_bearing_degrees": 63.9,
-      "progress": { "forward": 0.441, "strafe_left": 0.898, "strafe_right": -0.898, "back": -0.441 },
-      "recommended_movement": "strafe_left"
+      "progress": { "forward": 0.441, "forward_left": 0.946, "strafe_left": 0.898, "strafe_right": -0.898, "...": "..." },
+      "recommended_movement": "forward_left"
     }
   },
   "model": "jev-latest",
@@ -174,7 +174,7 @@ threat `relevant` true or false.
 
 Responses are validated before use: labels must match exactly, each value must
 be a finite number in `[0, 1]`, and the sum must be within `0.05` of `1.0`
-(Jev rounds to two decimals, so a five-option question can legitimately sum to
+(Jev rounds to two decimals, so a nine-option question can legitimately sum to
 `0.99`). The argmax of each question yields `DuumControls`; the reported
 `confidence` is recorded but does not gate behavior by default. On any transport
 or validation failure the decision raises and the run is **fail-closed**:

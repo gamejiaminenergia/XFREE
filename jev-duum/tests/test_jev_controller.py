@@ -34,11 +34,15 @@ class FakeJevClient:
                 "choice": "strafe_left",
                 "confidence": 0.6,
                 "probabilities": {
-                    "forward": 0.1,
-                    "back": 0.1,
-                    "strafe_left": 0.6,
-                    "strafe_right": 0.1,
-                    "hold": 0.1,
+                    "forward": 0.10,
+                    "forward_left": 0.02,
+                    "forward_right": 0.02,
+                    "strafe_left": 0.60,
+                    "strafe_right": 0.08,
+                    "back_left": 0.01,
+                    "back_right": 0.01,
+                    "back": 0.06,
+                    "hold": 0.10,
                 },
             },
             "aim": {
@@ -192,9 +196,10 @@ def test_navigation_turn_advances_instead_of_freezing():
     applied, _ = JevDuumController(
         client=FakeJevClient(), assisted=True
     )._assist(state, proposed)
-    # The route is 28 degrees to the left and forward is safe: turn and walk
-    # instead of turning in place, which is what froze the old pilot.
-    assert applied == DuumControls("forward", "left", "neither")
+    # The route is 28 degrees to the left and forward is safe: turn and walk the
+    # diagonal that corners toward it, instead of turning in place, which is what
+    # froze the old pilot.
+    assert applied == DuumControls("forward_left", "left", "neither")
 
 
 def test_critical_health_takes_priority_over_nonattacking_enemy():
@@ -232,8 +237,8 @@ def test_critical_health_takes_priority_over_nonattacking_enemy():
         client=FakeJevClient(), assisted=True
     )._assist(state, proposed)
     # Critical health wins over the harmless enemy: face the pickup and keep
-    # moving toward it instead of standing still.
-    assert applied == DuumControls("forward", "left", "neither")
+    # moving toward it on the diagonal instead of standing still.
+    assert applied == DuumControls("forward_left", "left", "neither")
 
 
 def test_fist_does_not_target_enemy_across_impassable_height():
@@ -271,10 +276,14 @@ def test_v3_sends_the_strategy_and_never_freezes_forever():
             "confidence": 0.9,
             "probabilities": {
                 "forward": 0.02,
-                "back": 0.02,
+                "forward_left": 0.02,
+                "forward_right": 0.02,
                 "strafe_left": 0.02,
                 "strafe_right": 0.02,
-                "hold": 0.92,
+                "back_left": 0.02,
+                "back_right": 0.02,
+                "back": 0.02,
+                "hold": 0.84,
             },
         },
         "aim": {
@@ -345,9 +354,13 @@ def test_unnormalized_probabilities_are_rejected():
     answers["movement"] = {
         "probabilities": {
             "forward": 0.5,
-            "back": 0.5,
+            "forward_left": 0.1,
+            "forward_right": 0.1,
             "strafe_left": 0.5,
-            "strafe_right": 0.1,
+            "strafe_right": 0.5,
+            "back_left": 0.1,
+            "back_right": 0.1,
+            "back": 0.1,
             "hold": 0.1,
         }
     }
@@ -355,18 +368,23 @@ def test_unnormalized_probabilities_are_rejected():
         JevDuumController(client=FakeJevClient(answers=answers)).decide(snapshot())
 
 
-def test_two_decimal_rounding_of_a_five_option_choice_is_accepted():
-    # Observed live: 0.07 + 0.17 + 0.20 + 0.28 + 0.27 == 0.99.
+def test_two_decimal_rounding_of_a_nine_option_choice_is_accepted():
+    # Observed live: 0.06 + 0.18 + 0.28 + 0.16 + 0.27 plus four 0.01 diagonals
+    # == 0.99.
     answers = FakeJevClient().answers
     answers["movement"] = {
         "type": "choice",
         "choice": "strafe_right",
         "confidence": 0.1,
         "probabilities": {
-            "forward": 0.07,
-            "back": 0.17,
-            "strafe_left": 0.20,
+            "forward": 0.06,
+            "forward_left": 0.01,
+            "forward_right": 0.01,
+            "strafe_left": 0.18,
             "strafe_right": 0.28,
+            "back_left": 0.01,
+            "back_right": 0.01,
+            "back": 0.16,
             "hold": 0.27,
         },
     }

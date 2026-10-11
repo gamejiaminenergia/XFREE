@@ -565,11 +565,20 @@ class SnapshotBuilder:
 
     def _movement_options(self) -> tuple[MovementOptionSnapshot, ...]:
         ca, sa = math.cos(self.app.pa), math.sin(self.app.pa)
+        inv = 1.0 / math.sqrt(2.0)
+        # The eight ways a Doom player can hold the movement keys: the four
+        # cardinals and the four diagonals that combine forward/back with a
+        # strafe.  Diagonals are unit-length, so their clearance is comparable
+        # with the cardinals' even though Duum steps the raw sum of the axes.
         vectors = {
             "forward": (ca, sa),
             "back": (-ca, -sa),
             "strafe_left": (-sa, ca),
             "strafe_right": (sa, -ca),
+            "forward_left": ((ca - sa) * inv, (sa + ca) * inv),
+            "forward_right": ((ca + sa) * inv, (sa - ca) * inv),
+            "back_left": ((-ca - sa) * inv, (-sa + ca) * inv),
+            "back_right": ((-ca + sa) * inv, (-sa - ca) * inv),
         }
         options = []
         for name, (vx, vy) in vectors.items():

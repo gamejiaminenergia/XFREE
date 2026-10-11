@@ -1,4 +1,5 @@
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -150,7 +151,24 @@ def test_progress_geometry_matches_the_bearing_convention():
     assert progress_scores(math.radians(-90))["strafe_right"] == 1.0
     assert progress_scores(math.radians(180))["back"] == 1.0
     assert progress_scores(math.radians(45))["forward"] == pytest.approx(0.707, abs=0.01)
+    assert progress_scores(math.radians(45))["forward_left"] == 1.0
+    assert progress_scores(math.radians(-45))["forward_right"] == 1.0
+    assert progress_scores(math.radians(135))["back_left"] == 1.0
+    assert progress_scores(math.radians(-135))["back_right"] == 1.0
     assert progress_scores(None) == {}
+
+
+def test_best_progress_prefers_the_diagonal_toward_an_off_axis_goal():
+    # A goal 45 degrees to the left is closed faster on the diagonal than by
+    # walking the forward axis and turning, which is the mobility the single-bit
+    # adapter used to throw away.
+    state = make_snapshot(route_degrees=45.0)
+    diagonal = replace(
+        state,
+        movement_options=state.movement_options
+        + (MovementOptionSnapshot("forward_left", 96.0, True),),
+    )
+    assert best_progress_movement(diagonal, math.radians(45)) == "forward_left"
 
 
 def test_best_progress_respects_safety_and_returns_none_without_progress():

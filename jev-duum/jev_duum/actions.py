@@ -22,6 +22,12 @@ MOVEMENT_MASKS = {
     "back": A_BACK,
     "strafe_left": A_STRAFE_LEFT,
     "strafe_right": A_STRAFE_RIGHT,
+    # A diagonal is both movement bits at once: Duum sums the two axes before
+    # it steps, so the player corners instead of losing the lateral component.
+    "forward_left": A_FORWARD | A_STRAFE_LEFT,
+    "forward_right": A_FORWARD | A_STRAFE_RIGHT,
+    "back_left": A_BACK | A_STRAFE_LEFT,
+    "back_right": A_BACK | A_STRAFE_RIGHT,
     "hold": 0,
 }
 AIM_MASKS = {"left": A_TURN_LEFT, "straight": 0, "right": A_TURN_RIGHT}
