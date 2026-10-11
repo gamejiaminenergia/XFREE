@@ -47,6 +47,10 @@ uv run --no-sync jev-duum --pilot manual
 
 # Deterministic headless baseline (never touches the network)
 uv run --no-sync jev-duum --pilot scripted --headless --ticks 600
+# Deterministic hunt baseline: adversary model + 60 Hz reflex, no network
+uv run --no-sync jev-duum --pilot hunter --headless --ticks 1800
+# Attribute every point of damage of a recording to its source
+uv run --no-sync jev-duum-autopsy artifacts/<episode>.json --duum-path ../duum
 
 # Eight paired policy experiments (this one costs real tokens)
 uv run --no-sync jev-duum-eval --map E1M1 --ticks 3600
@@ -75,6 +79,12 @@ Three frozen request shapes live in `jev_duum/prompts.py`:
 | `v2` | named JSON fields: `player`, `objective`, `threats`, `projectiles_inbound`, `pickups`, `usable_geometry`, `movement_options`, `situation`, and a `conventions` block | structured `instructions` and per-option rubrics (`what`, `use_when`, `not_for`) |
 | `v3` | as `v2` plus a `strategy` block (mission, priority, focus, step-by-step plan, rules of engagement, `must_move`) and a `progress` score per movement option | rubrics that execute the plan instead of restating the policy |
 | `v3w` (default) | as `v3` plus a `world_model` block from the schematic level map: room, route to the exit, nukage underfoot, 360-degree sector risk, hidden foes and hidden pickups | `v3` rubrics plus world-model rules; the block is published as *informative, not authoritative* |
+| `v4` | as `v3` plus `hunt` (the code's kill order with shots-to-kill, arrival seconds and projected kills per second) and `adversary` per visible threat | `v3` rubrics plus a fourth `target` question: Jev picks which monster to hunt, the code executes |
+
+`--mission clear` (the CLI default) turns the run into a hunt: the code owns the
+adversary model, the route to each monster and the 60 Hz reflexes, and Jev only
+chooses the next kill. `--mission advance` restores the original
+reach-the-exit doctrine.
 
 `v2` follows
 [Structure](https://docs.typesafe.ai/primitives/advanced). The model judges;

@@ -1,4 +1,4 @@
-"""Balance mod for the pinned Duum engine: 10x player health, 10x player damage.
+"""Balance mod for the pinned Duum engine: 10x life, 10x damage, 20x ammo.
 
 The engine is an external, pinned dependency (never vendored), so this is a
 *reproducible, reversible patch* applied to whatever checkout you are running —
@@ -11,15 +11,17 @@ the block (change the multipliers below and re-run it).
 
 What it changes in ``duum/engine.py``:
 
-1. adds ``HEALTH_MULT = 10``, ``DAMAGE_MULT = 10`` and
+1. adds ``HEALTH_MULT = 10``, ``DAMAGE_MULT = 10``, ``AMMO_MULT = 20`` and
    ``PLAYER_MAXHEALTH = 100 * HEALTH_MULT``;
-2. the player starts with ``PLAYER_MAXHEALTH`` instead of 100;
+2. the player starts with ``PLAYER_MAXHEALTH`` health and a full clip of
+   ``AMMO_MULT`` starting bullets, with every ammo cap raised ``AMMO_MULT``x;
 3. ``damage_monster`` multiplies every hit the player lands (hitscan, melee,
    projectiles, splash, barrels);
 4. health pickups cap at the new maximum (otherwise a 1000 HP player could
    never pick up a medikit again);
-5. the status-bar face scales against the new maximum instead of 100.
-6. with 4-digit health (>= 1000) the ammo counter slides left, because the
+5. ammo pickups, weapon pickups and the backpack all grant ``AMMO_MULT``x;
+6. the status-bar face scales against the new maximum instead of 100.
+7. with 4-digit health (>= 1000) the ammo counter slides left, because the
    original status bar only reserves room for three digits.
 
 It does not touch the repository's git HEAD, so the adapter's pin check still
@@ -34,12 +36,13 @@ import sys
 from pathlib import Path
 
 MARKER_PREFIX = "# ---- balance mod"
-MARKER = f"{MARKER_PREFIX} (10x life / 10x damage, see mods/balance.py) ----"
+MARKER = f"{MARKER_PREFIX} (10x life / 10x damage / 20x ammo, see mods/balance.py) ----"
 
 CONSTANTS = (
     f"{MARKER}\n"
     "HEALTH_MULT = 10                # player max health multiplier\n"
     "DAMAGE_MULT = 10                # damage the player deals multiplier\n"
+    "AMMO_MULT = 20                  # ammunition the player gets multiplier\n"
     "PLAYER_MAXHEALTH = 100 * HEALTH_MULT\n"
 )
 
@@ -54,6 +57,13 @@ EDITS = (
         "max health on spawn",
         "        self.health = 100; self.armor = 0\n",
         "        self.health = PLAYER_MAXHEALTH; self.armor = 0\n",
+    ),
+    (
+        "starting ammo and ammo caps",
+        "        self.ammo = [0, 50, 0, 0, 0]\n"
+        "        self.maxammo = list(AMMOMAX)\n",
+        "        self.ammo = [0, 50 * AMMO_MULT, 0, 0, 0]\n"
+        "        self.maxammo = [m * AMMO_MULT for m in AMMOMAX]\n",
     ),
     (
         "double the player's damage",
@@ -73,6 +83,37 @@ EDITS = (
         "            if self.health >= b and a > 1:\n"
         "                return False\n"
         "            self.health = min(self.health + a, b)\n",
+    ),
+    (
+        "ammo pickups are worth AMMO_MULT",
+        "        elif kind == 3:\n"
+        "            if self.ammo[a] >= self.maxammo[a]:\n"
+        "                return False\n"
+        "            self.ammo[a] = min(self.ammo[a] + b, self.maxammo[a])\n",
+        "        elif kind == 3:\n"
+        "            b = b * AMMO_MULT\n"
+        "            if self.ammo[a] >= self.maxammo[a]:\n"
+        "                return False\n"
+        "            self.ammo[a] = min(self.ammo[a] + b, self.maxammo[a])\n",
+    ),
+    (
+        "weapon pickups grant AMMO_MULT ammo",
+        "            self.ammo[w[4]] = min(self.ammo[w[4]] + b * 2,"
+        " self.maxammo[w[4]])\n",
+        "            self.ammo[w[4]] = min(self.ammo[w[4]] + b * 2 * AMMO_MULT,"
+        " self.maxammo[w[4]])\n",
+    ),
+    (
+        "backpack grants AMMO_MULT ammo and caps",
+        "            for i in range(1, 5):\n"
+        "                self.maxammo[i] = AMMOMAX[i] * 2\n"
+        "                self.ammo[i] = min(self.ammo[i] + (10, 4, 1, 20)[i - 1],\n"
+        "                                   self.maxammo[i])\n",
+        "            for i in range(1, 5):\n"
+        "                self.maxammo[i] = AMMOMAX[i] * 2 * AMMO_MULT\n"
+        "                self.ammo[i] = min(\n"
+        "                    self.ammo[i] + (10, 4, 1, 20)[i - 1] * AMMO_MULT,\n"
+        "                    self.maxammo[i])\n",
     ),
     (
         "status-bar face scales with the new maximum",
@@ -178,7 +219,10 @@ def main(argv=None) -> int:
         return 0
     result = apply(args.duum)
     if not args.quiet:
-        print(f"balance mod: {result} (10x health, 10x damage) in {path}", file=sys.stderr)
+        print(
+            f"balance mod: {result} (10x health, 10x damage, 20x ammo) in {path}",
+            file=sys.stderr,
+        )
     return 0
 
 

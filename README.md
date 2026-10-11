@@ -19,6 +19,8 @@ Duum (60 Hz) ─▶ SnapshotBuilder ─▶ semantic state ─▶ POST api.typesa
 The project ships no model weights: Jev is a remote API, so the deployment is
 standard library + Duum only. A decision costs about $0.00003–$0.00005.
 
+**To run it, just one command:** `./main.sh`
+
 ## What is in this repository
 
 | Path | What it is |
@@ -35,52 +37,86 @@ Duum itself is **not** vendored — it stays an external, pinned dependency.
 ## Requirements
 
 - Python 3.11–3.13 and [uv](https://docs.astral.sh/uv/)
-- The pinned Duum checkout (one command, below)
+- The pinned Duum checkout (fetched for you by `./main.sh`)
 - A TypeSafe API key
 - Optional: Tk for the game window, Docker for the audit log
 
 ## Quickstart
 
-The short way — one command does everything below (finds or creates the pinned
-engine, syncs the environment, applies the balance mod and launches):
-
 ```bash
-./main.sh                 # window + inspector; --windowed for a normal window
-./main.sh --headless --ticks 600
+./main.sh
 ```
 
-Or step by step:
+That is the whole thing. The **first run** asks for your `TYPESAFE_API_KEY` once
+(typed into the terminal, saved git-ignored, never printed) and then plays. It
+finds or clones the pinned engine, syncs the environment, applies the balance
+mod and opens the single window: **the game on the left, the AI's decision on
+the right**.
+
+<details>
+<summary>Optional flags — you do not need any of these</summary>
+
+```bash
+./main.sh --windowed                 # normal window instead of fullscreen
+./main.sh --headless --ticks 600     # no window, JSON summary
+./main.sh --pilot manual             # you play instead of the AI
+JEV_VANILLA=1 ./main.sh              # skip the balance mod
+```
+
+`bash play.sh` (from `jev-duum/`) is the same demo without the engine bootstrap.
+The bundled `freedoom1.wad` (Freedoom Phase 1, BSD-3-Clause) is validated by
+header and SHA-256; `--wad /path/to/file.wad` accepts another legal IWAD.
+
+</details>
+
+<details>
+<summary>Manual setup — only if you do not want <code>./main.sh</code> to do it for you</summary>
 
 ```bash
 git clone https://github.com/<you>/<repo>.git
 cd <repo>
-
-# 1. Pinned engine (MPL-2.0) next to the jev-duum package
-bash scripts/setup_duum.sh
-
-# 2. Credential — git-ignored, never printed, worth ~$0.00005 per decision
+bash scripts/setup_duum.sh            # pinned engine (MPL-2.0)
 cp jev-duum/.env.example jev-duum/.env
-$EDITOR jev-duum/.env            # set TYPESAFE_API_KEY
-
-# 3. Dependencies (stdlib + Duum, nothing else)
+$EDITOR jev-duum/.env                 # set TYPESAFE_API_KEY
 cd jev-duum && uv sync
-
-# 4. Play
-bash play.sh                     # window + decision inspector
-bash play.sh --headless          # no window, JSON summary
+bash play.sh
 ```
 
-`./main.sh` also applies the optional **balance mod** (`mods/balance.py`: 3×
-player health, 2× player damage) to the engine checkout it uses — idempotent, and
-reversible with `python3 mods/balance.py --duum <path> --revert`. Start with
-`JEV_VANILLA=1 ./main.sh` (or plain `play.sh`) to keep the game original.
+</details>
 
-`play.sh` reads `jev-duum/.env` for you; an exported `TYPESAFE_API_KEY` always
-wins. The bundled `freedoom1.wad` (Freedoom Phase 1, BSD-3-Clause) is validated
-by header and SHA-256 on every run; pass `--wad /path/to/file.wad` for another
-legally obtained IWAD.
+## The window — game on the left, the decision on the right
+
+There is **one** window, split in two equal halves:
+
+- **Left half — the game.** The live Duum view at the engine's own crisp
+  integer zoom, with the health/armor/ammo threshold meters, the schematic
+  mini-map and the episode state below it.
+- **Right half — the AI's decision.** The chosen `MOVIMIENTO` / `APUNTADO` /
+  `ACCIÓN` in large type, the full probability bars, the model's confidence,
+  any **deterministic guard correction** (`el modelo dijo «right» → aplicado
+  «left» …`) and a pace timeline; below that, the audit tabs. This is the part
+  to read from the back of the room.
+
+Launch it with `./main.sh`.
+
+<details>
+<summary>Rehearse for free, offline — dev tool, no API key, no network</summary>
+
+```bash
+cd jev-duum
+python3 tools/preview_panel.py             # one shot of the window per tab
+python3 tools/decision_stage_mockup.py     # the design mockup
+```
+
+Rendered with a constant fake model answer; Pillow is optional and only used to
+save the PNG.
+
+</details>
 
 ## Run modes
+
+<details>
+<summary>Advanced — prompt versions, offline baselines and evaluations</summary>
 
 ```bash
 # Jev plays, windowed and fullscreen by default (--windowed for a normal window)
@@ -103,10 +139,11 @@ Choose the request shape with `--prompt-version v1|v2|v3|v3w` (default `v3w`).
 See [`jev-duum/README.md`](jev-duum/README.md) for the prompt tables, the
 offline prompt harness and the measured results.
 
-## The live inspector
+</details>
 
-The Tk window keeps Duum's canvas untouched and adds two panels: the agent on
-the left, and a tabbed model inspector on the right.
+## The inspector tabs
+
+The right-hand column carries the model's audit trail:
 
 | Tab | Contents |
 |---|---|
@@ -114,11 +151,11 @@ the left, and a tabbed model inspector on the right.
 | `RESPUESTA` | model id, prompt, tokens, cost and latency; the three probability distributions with the argmax highlighted and `confidence` pills; the raw response JSON. |
 | `PETICIÓN` | the exact `state` sent to Jev, the questions with their instructions and criteria, a per-key index of the state, and the payload size. |
 | `MUNDO` | the schematic readout: room, route remaining, hidden foes, sector risk, top threats and aspirations — flagged as visual-only or as travelling to the model. |
+| `HISTORIAL` | the latest decisions (applied controls and confidence), newest first. |
 
-The window starts fullscreen and reflows on resize: columns adapt, the game
-canvas takes the largest integer zoom that fits and the mini-automap grows
-keeping the schematic aspect ratio. `F11` toggles fullscreen; because there is
-no title bar then, the inspector also carries `□ F11` and `✕ salir` buttons.
+The window starts fullscreen and reflows on resize: the columns adapt and the
+mini-map scales with the left column. `F11` toggles fullscreen; because there is
+no title bar then, the top-right corner also carries `□ F11` and `✕ salir`.
 
 ## Audit log (optional)
 
@@ -155,6 +192,10 @@ The four skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
   schematic world model that rides inside `v3w` requests.
 - [`docs/UI_IMPROVEMENT_PLAN.md`](docs/UI_IMPROVEMENT_PLAN.md) — the inspector
   redesign, fullscreen reflow and request/response detail.
+- [`docs/UI_IMPROVEMENTS_V2.md`](docs/UI_IMPROVEMENTS_V2.md) — an offline (\$0)
+  audit of the shipped inspector and the phased improvement plan.
+- [`docs/AI_DECISION_STAGE_PLAN.md`](docs/AI_DECISION_STAGE_PLAN.md) — the
+  decision-first layout for a live AI talk (now the single window).
 - [`jev-duum/docs/JEV_INTEGRATION.md`](jev-duum/docs/JEV_INTEGRATION.md) —
   architecture, benchmarking, recording and replay.
 

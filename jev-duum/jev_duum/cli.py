@@ -21,7 +21,7 @@ from .wad import default_wad_path, resolve_wad
 
 load_local_env()
 
-PILOTS = ("manual", "scripted", "random", "heuristic", "jev", "jev-assisted")
+PILOTS = ("manual", "scripted", "random", "heuristic", "hunter", "jev", "jev-assisted")
 
 
 def make_parser() -> argparse.ArgumentParser:
@@ -81,6 +81,21 @@ def make_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not attach the schematic world model (map/sense.py + heuristics.py) to the request",
     )
+    parser.add_argument(
+        "--mission",
+        choices=("clear", "advance"),
+        default="clear",
+        help=(
+            "Code-owned mission: 'clear' hunts every monster with the adversary model "
+            "(default), 'advance' keeps the original reach-the-exit plan"
+        ),
+    )
+    parser.add_argument(
+        "--damage-log",
+        type=Path,
+        default=None,
+        help="Write one JSON line per damage event with its source (headless only)",
+    )
     parser.add_argument("--replay", type=Path)
     parser.add_argument(
         "--windowed",
@@ -123,7 +138,7 @@ def _validate(parser, args):
         return
     if args.pilot == "manual" and args.headless:
         parser.error("the manual pilot needs Duum's normal window; omit --headless")
-    if args.pilot in ("scripted", "random", "heuristic") and not args.headless:
+    if args.pilot in ("scripted", "random", "heuristic", "hunter") and not args.headless:
         parser.error(f"the {args.pilot} baseline is headless; add --headless")
     if args.record and not args.headless:
         parser.error("exact recording currently requires synchronous --headless mode")
@@ -149,6 +164,7 @@ def _controller(parser, args):
             prompt_version=args.prompt_version,
             world_model=not args.no_world_model,
             pilot=args.pilot,
+            mission=args.mission,
         )
     except (FileNotFoundError, ValueError, RuntimeError) as error:
         parser.error(str(error))
@@ -273,6 +289,7 @@ def play(argv=None) -> int:
                 controller=controller,
                 recorder=recorder,
                 checkpoint_every=args.checkpoint_every,
+                damage_log=args.damage_log,
             )
         except (RuntimeError, ValueError, FloatingPointError) as error:
             parser.error(str(error))

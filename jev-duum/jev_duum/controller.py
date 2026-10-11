@@ -16,10 +16,12 @@ import time
 from dataclasses import asdict, dataclass, replace
 
 from .assistance import AssistanceEvent, apply_assistance
+from .hunt import HuntTracker, compute_hunt, with_target
 from .jev_client import DEFAULT_MODEL, JevClient, input_cost_usd
 from .prompts import (
     DEFAULT_PROMPT_VERSION,
     PROMPT_VERSIONS,
+    TARGET_CHOICES,
     build_questions,
     build_state,
 )
@@ -40,6 +42,7 @@ DEFINITIONS = (
     ("aim", AIMS),
     ("interaction", INTERACTIONS),
 )
+DEFINITIONS_V4 = DEFINITIONS + (("target", TARGET_CHOICES),)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +74,8 @@ class DecisionResult:
     request_state: dict | None = None
     request_questions: dict | None = None
     response_raw: dict | None = None
+    hunt: dict | None = None
+    target_choice: str | None = None
 
     def with_application_tick(self, tick: int) -> DecisionResult:
         return replace(self, application_tick=int(tick))
@@ -145,6 +150,15 @@ def argmax_controls(probabilities: dict[str, dict[str, float]]) -> DuumControls:
     )
 
 
+def argmax_target(probabilities: dict[str, dict[str, float]]) -> str | None:
+    """Reduce the optional ``target`` distribution to one label (``None`` if absent)."""
+
+    values = probabilities.get("target")
+    if not values:
+        return None
+    return max(TARGET_CHOICES, key=values.__getitem__)
+
+
 class JevDuumController:
     """Turn one canonical snapshot into one Jev request and three controls."""
 
@@ -159,6 +173,7 @@ class JevDuumController:
         pilot: str | None = None,
         api_key: str | None = None,
         endpoint: str | None = None,
+        mission: str = "advance",
     ):
         self.assisted = bool(assisted)
         self.model = model or os.environ.get("TYPESAFE_MODEL") or DEFAULT_MODEL
@@ -175,7 +190,13 @@ class JevDuumController:
             )
         self.prompt_version = version
         self.questions = build_questions(version)
+        self.definitions = DEFINITIONS_V4 if version == "v4" else DEFINITIONS
         self.tracker = StrategyTracker()
+        self.hunt_tracker = HuntTracker()
+        mission = str(mission or "clear").lower()
+        if mission not in ("clear", "advance"):
+            raise ValueError("mission must be 'clear' or 'advance'")
+        self.mission = mission
         if client is None:
             client = JevClient(api_key=api_key, model=self.model, endpoint=endpoint)
         self.client = client
@@ -193,13 +214,24 @@ class JevDuumController:
             "model_id": self.model,
             "endpoint": getattr(client, "endpoint", None),
             "prompt_version": self.prompt_version,
+            "mission": self.mission,
             "policy": "One Jev request with three choices over semantic Duum snapshots; "
             "pixels are never model input",
         }
+        if mission == "clear":
+            self.metadata["policy"] += (
+                "; code-owned hunt plan, Jev picks the next kill"
+                if version == "v4"
+                else "; code-owned hunt plan"
+            )
 
     # -- observations --------------------------------------------------------
     def combined_state(
-        self, snapshot: DuumSnapshot, strategy=None, world_model: dict | None = None
+        self,
+        snapshot: DuumSnapshot,
+        strategy=None,
+        world_model: dict | None = None,
+        hunt=None,
     ) -> tuple[dict, dict[str, str]]:
         """Build the request state for this controller's prompt version.
 
@@ -207,27 +239,40 @@ class JevDuumController:
         same for both prompt versions.
         """
 
-        return build_state(snapshot, self.prompt_version, strategy, world_model)
+        return build_state(snapshot, self.prompt_version, strategy, world_model, hunt)
 
     # -- decision ------------------------------------------------------------
     def decide(self, snapshot: DuumSnapshot) -> DecisionResult:
         started = time.perf_counter()
+        hunt_plan = (
+            compute_hunt(snapshot, self.hunt_tracker) if self.mission == "clear" else None
+        )
         strategy = (
-            compute_strategy(snapshot, self.tracker)
+            compute_strategy(snapshot, self.tracker, hunt_plan)
             if self.prompt_version in ("v3", "v3w")
             else None
         )
+        if self.prompt_version == "v4":
+            strategy = compute_strategy(snapshot, self.tracker, hunt_plan)
         world = self._world_model(snapshot)
-        state, observations = self.combined_state(snapshot, strategy, world)
+        state, observations = self.combined_state(snapshot, strategy, world, hunt_plan)
         request_started = time.perf_counter()
         response = self.client.ask(
             state,
             self.questions,
-            context={"tick": snapshot.tick, "strategy": strategy.to_dict() if strategy else None},
+            context={
+                "tick": snapshot.tick,
+                "strategy": strategy.to_dict() if strategy else None,
+                "hunt": hunt_plan.to_dict() if hunt_plan is not None else None,
+            },
         )
         request_ms = (time.perf_counter() - request_started) * 1000
 
-        probabilities, confidence = parse_answers(response)
+        probabilities, confidence = parse_answers(response, self.definitions)
+        target_choice = argmax_target(probabilities)
+        if self.prompt_version == "v4" and hunt_plan is not None:
+            hunt_plan = self._apply_target_choice(snapshot, hunt_plan, target_choice)
+            strategy = compute_strategy(snapshot, self.tracker, hunt_plan)
 
         usage = response.get("usage") or {}
         try:
@@ -267,7 +312,27 @@ class JevDuumController:
             request_state=state,
             request_questions=self.questions,
             response_raw=response,
+            hunt=hunt_plan.to_dict() if hunt_plan is not None else None,
+            target_choice=target_choice,
         )
+
+    def _apply_target_choice(self, snapshot, hunt_plan, choice: str | None):
+        """Let the model's ``target`` answer re-rank the hunt for this decision."""
+
+        if hunt_plan is None or choice in (None, "advance"):
+            return hunt_plan
+        if choice == "exit":
+            self.hunt_tracker.target_id = None
+            return with_target(hunt_plan, None, snapshot)
+        try:
+            index = TARGET_CHOICES.index(choice)
+        except ValueError:
+            return hunt_plan
+        if index >= len(hunt_plan.candidates):
+            return hunt_plan
+        monster = hunt_plan.candidates[index]
+        self.hunt_tracker.target_id = monster.id
+        return with_target(hunt_plan, monster, snapshot)
 
     def _world_model(self, snapshot: DuumSnapshot) -> dict | None:
         """Schematic playbook from ``map/``; None whenever it cannot be built."""

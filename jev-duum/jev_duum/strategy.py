@@ -12,11 +12,14 @@ import math
 from dataclasses import dataclass, replace
 
 from .geometry import best_clear_movement, best_progress_movement, progress_scores
+from .hunt import HuntPlan
 from .snapshot import DuumSnapshot
 from .types import AssistanceEvent, DuumControls
 
 MISSION = "advance"
 MISSION_STATEMENT = "Reach the exit and keep the player moving."
+CLEAR_MISSION = "clear"
+CLEAR_MISSION_STATEMENT = "Kill every monster on the level, then leave by the exit."
 ADVANCE_TOLERANCE_DEGREES = 45.0
 MAX_HOLD_STREAK = 5  # 0.5 s at the tuned 10 Hz decision rate
 RELEVANT_THREAT_DISTANCE = 240.0  # contact or near
@@ -66,6 +69,7 @@ class Strategy:
     guide_bearing_degrees: float | None
     progress: dict[str, float]
     recommended_movement: str | None
+    hunt: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -85,6 +89,7 @@ class Strategy:
             "guide_bearing_degrees": self.guide_bearing_degrees,
             "progress": self.progress,
             "recommended_movement": self.recommended_movement,
+            "hunt": self.hunt,
         }
 
 
@@ -160,7 +165,11 @@ def guide_bearing(snapshot: DuumSnapshot) -> float | None:
     return focus.bearing if focus is not None else None
 
 
-def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strategy:
+def compute_strategy(
+    snapshot: DuumSnapshot,
+    tracker: StrategyTracker,
+    hunt: HuntPlan | None = None,
+) -> Strategy:
     """Derive this decision's mission, plan, focus and movement guarantee."""
 
     route = snapshot.navigation if snapshot.navigation and snapshot.navigation.reachable else None
@@ -176,6 +185,16 @@ def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strate
         (item for item in snapshot.nearby_interactions if not item.locked), None
     )
     guide = guide_bearing(snapshot)
+    hunt_target = None
+    if hunt is not None and hunt.has_target:
+        hunt_target = next(
+            (
+                monster
+                for monster in hunt.candidates
+                if monster.id == hunt.target_id
+            ),
+            None,
+        )
 
     # An imminent impact beats everything; otherwise a critical pickup is the
     # survival move and takes precedence over a projectile that is still far,
@@ -214,6 +233,26 @@ def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strate
         plan = (
             f"Collect the critical {critical_pickup.category}.",
             "Keep moving toward it instead of stopping.",
+        )
+    elif hunt is not None and hunt.has_target:
+        priority = "hunt"
+        guide = hunt.target_bearing
+        focus = _focus_dict(
+            "monster",
+            hunt.target_bearing if hunt.target_bearing is not None else 0.0,
+            id=hunt.target_id,
+            category=hunt_target.category if hunt_target is not None else "monster",
+            shots_to_kill=hunt_target.shots_to_kill if hunt_target is not None else None,
+            kills_per_second=(
+                hunt_target.kills_per_second if hunt_target is not None else None
+            ),
+            route_reachable=hunt.route_reachable,
+        )
+        status = hunt.rationale
+        plan = (
+            f"Close on monster {hunt.target_id} along its route waypoint; keep moving.",
+            "Fire the moment a shot reaches it: the corridor is re-checked every tick.",
+            "Do not stop to trade shots; the kill is a matter of seconds per shot.",
         )
     elif (
         focus_threat is not None
@@ -286,6 +325,17 @@ def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strate
         hold_reason = "no-progress" if guide is not None else "no-guide"
     elif usable_geometry is not None:
         hold_reason = "use-geometry"
+    if hunt is not None and hunt.has_target and recommended is None:
+        # Clearing the level is never a reason to stand still: when the direct
+        # way is blocked, slide along the geometry until a waypoint appears.
+        crawl = best_clear_movement(snapshot)
+        if crawl is not None:
+            recommended = crawl
+            hold_reason = None
+            plan = (
+                *plan,
+                "The way to the target is blocked: slide along the wall instead of stopping.",
+            )
     must_move = recommended is not None and hold_reason is None
     if not must_move and tracker.hold_streak >= MAX_HOLD_STREAK:
         crawl = best_clear_movement(snapshot)
@@ -301,8 +351,10 @@ def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strate
         hold_reason = None
 
     return Strategy(
-        mission=MISSION,
-        mission_statement=MISSION_STATEMENT,
+        mission=CLEAR_MISSION if hunt is not None else MISSION,
+        mission_statement=(
+            CLEAR_MISSION_STATEMENT if hunt is not None else MISSION_STATEMENT
+        ),
         priority=priority,
         status=status,
         plan=plan,
@@ -317,6 +369,7 @@ def compute_strategy(snapshot: DuumSnapshot, tracker: StrategyTracker) -> Strate
         guide_bearing_degrees=_degrees(guide) if guide is not None else None,
         progress=progress,
         recommended_movement=recommended,
+        hunt=hunt.to_dict() if hunt is not None else None,
     )
 
 

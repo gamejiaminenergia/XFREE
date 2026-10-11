@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lanza el demo: Jev (TypeSafe System One) jugando Doom/Freedoom con el motor Duum.
 #
-#   bash play.sh              -> ventana de juego con panel de decisiones
+#   bash play.sh              -> una ventana: la decision de la IA + inspector
 #   bash play.sh --headless   -> sin ventana, resumen JSON (kills, salud, tiempo)
 #
 # La clave viaja en TYPESAFE_API_KEY. Se toma del entorno o de .env (ignorado por

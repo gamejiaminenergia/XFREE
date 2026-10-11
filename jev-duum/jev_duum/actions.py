@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from .geometry import best_progress_movement
+from . import reflex
 from .types import DuumControls
 
 # These values are Duum's documented host contract, not frontend key names.
@@ -46,41 +46,15 @@ def settle_assisted_controls(controls: DuumControls, snapshot) -> DuumControls:
     that turn on the first engine tick at which its combat target or route is
     centered (or has crossed the centerline).  Once a route is centered it may
     also begin the already-approved safe forward movement immediately instead
-    of idling until the next model call.
+    of idling until the next model call.  The same call now also re-checks
+    projectile dodges and blocked movements every tick, so the guard is not
+    limited to the decision rate.
     """
 
-    if snapshot.player.weapon_name == "fist":
-        combat = tuple(
-            enemy
-            for enemy in snapshot.visible_enemies
-            if enemy.melee_reachable
-            and (
-                enemy.attacking
-                or (enemy.active and enemy.distance < 160)
-                or enemy.distance < 64
-            )
-        )
-    else:
-        combat = (
-            tuple(
-                enemy
-                for enemy in snapshot.visible_enemies
-                if enemy.active or enemy.attacking or enemy.distance < 560
-            )
-            if snapshot.player.ammo > 0
-            else ()
-        )
     target = min(
-        combat,
+        snapshot.visible_enemies,
         key=lambda enemy: (abs(enemy.bearing), enemy.distance, enemy.id),
         default=None,
-    )
-    route = snapshot.navigation
-    near_exit = (
-        route is not None
-        and route.reachable
-        and route.objective == "exit"
-        and route.route_length <= 7
     )
     urgent_pickup = next(
         (
@@ -90,13 +64,6 @@ def settle_assisted_controls(controls: DuumControls, snapshot) -> DuumControls:
         ),
         None,
     )
-    if (
-        near_exit
-        and urgent_pickup is not None
-        and urgent_pickup.need != "critical"
-        and snapshot.player.health >= 25
-    ):
-        urgent_pickup = None
     if urgent_pickup is not None and urgent_pickup.need == "critical":
         target = None
     interaction = next(
@@ -106,38 +73,11 @@ def settle_assisted_controls(controls: DuumControls, snapshot) -> DuumControls:
         # Stop inside Duum's exact 65-unit use range instead of carrying a
         # low-rate forward command through (or sideways away from) a door.
         controls = replace(controls, movement="hold", aim="straight")
-    if controls.aim == "straight":
-        return controls
-    if target is not None:
-        bearing = target.bearing
-        guided_movement = False
-    elif urgent_pickup is not None:
-        bearing = urgent_pickup.bearing
-        guided_movement = True
-    elif route is not None and route.reachable:
-        bearing = route.bearing
-        guided_movement = True
-    else:
-        return controls
-    tolerance = 0.10 if target is not None else 0.04
-    crossed = (controls.aim == "left" and bearing <= tolerance) or (
-        controls.aim == "right" and bearing >= -tolerance
+    bearing, tolerance, _ = reflex.guide_bearing(snapshot)
+    settled, _ = reflex.apply(
+        controls, snapshot, bearing=bearing, tolerance=tolerance
     )
-    if not crossed:
-        # Still turning: keep the player moving toward the guide instead of
-        # idling through the turn.  A safe strafe or forward step converges
-        # while the aim comes around, which is what removes the long freezes.
-        if guided_movement and controls.movement == "hold":
-            preferred = best_progress_movement(snapshot, bearing)
-            if preferred is not None:
-                return replace(controls, movement=preferred)
-        return controls
-    movement = controls.movement
-    if guided_movement and movement == "hold":
-        preferred = best_progress_movement(snapshot, bearing)
-        if preferred is not None:
-            movement = preferred
-    return replace(controls, aim="straight", movement=movement)
+    return settled
 
 
 def ensure_usable_weapon(app, engine) -> bool:

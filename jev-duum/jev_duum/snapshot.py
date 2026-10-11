@@ -8,7 +8,12 @@ import json
 import math
 from dataclasses import asdict, dataclass
 
+from . import adversary
 from .types import DuumControls
+
+# The hunt catalogue is truncated so pathological maps stay bounded; E1M1's 29
+# monsters all fit.  The prompt only ever quotes a plan's top three candidates.
+MAX_HUNT_TARGETS = 32
 
 
 def _angle(value: float) -> float:
@@ -71,6 +76,39 @@ class EnemySnapshot:
     aligned: bool
     motion: str
     threat: float
+
+
+@dataclass(frozen=True, slots=True)
+class MonsterSnapshot:
+    """One live monster anywhere on the level, visible or not.
+
+    This is the adversary catalogue: the engine knows every ``things_live``
+    entry, dormant included, so the planner can decide where to hunt instead of
+    waiting for a monster to walk into the camera.  ``kills_per_second`` is the
+    shared extrapolation number: the code ranks with it and the prompt quotes
+    it.
+    """
+
+    id: int
+    kind: int
+    category: str
+    x: float
+    y: float
+    bearing: float
+    bearing_word: str
+    distance: float
+    distance_word: str
+    hp: int
+    hp_fraction: float
+    awake: bool
+    attacking: bool
+    has_los: bool
+    direct_path: bool
+    aligned: bool
+    shots_to_kill: int
+    kill_seconds: float
+    arrival_seconds: float
+    kills_per_second: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +176,8 @@ class EpisodeSnapshot:
     idle_ticks: int
     dead: bool
     finished: bool
+    monsters_remaining: int = 0
+    monsters_awake: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +194,9 @@ class DuumSnapshot:
     navigation: NavigationSnapshot | None
     omitted_enemies: int
     episode: EpisodeSnapshot
+    hidden_enemies: tuple[MonsterSnapshot, ...] = ()
+    hunt_route: NavigationSnapshot | None = None
+    hunt_route_target_id: int | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -188,10 +231,28 @@ class SnapshotBuilder:
         self._nav_key = None
         self._nav_points = []
         self._nav_planned_tick = -10_000
+        self._hunt_target_hint: int | None = None
+        self._hunt_points = []
+        self._hunt_key = None
+        self._hunt_planned_tick = -10_000
         self._subsector_internal = None
 
     def note_controls(self, controls: DuumControls) -> None:
         self._last_controls = controls
+
+    def note_hunt_target(self, target_id: int | None) -> None:
+        """Name the monster the policy currently wants dead.
+
+        The route to it is computed here, with the same graph as the exit
+        route, so the policy only has to pick a target; navigation stays in the
+        one place that already knows about doors, keys and lifts.
+        """
+
+        hint = None if target_id is None else int(target_id)
+        if hint != self._hunt_target_hint:
+            self._hunt_target_hint = hint
+            self._hunt_points = []
+            self._hunt_key = None
 
     def _thing_id(self, thing) -> int:
         key = id(thing)
@@ -213,16 +274,21 @@ class SnapshotBuilder:
         return math.hypot(dx, dy), _angle(math.atan2(dy, dx) - self.app.pa)
 
     def _enemy_category(self, thing) -> str:
-        attack = self.engine.MONST[thing[3]][4]
-        if attack in (0, 6):
-            return "melee-enemy"
-        if attack in (1, 2):
-            return "hitscan-enemy"
-        return "projectile-enemy"
+        return adversary.monster_category(self.engine, thing[3])
 
-    def _enemies(self) -> tuple[tuple[EnemySnapshot, ...], int, int]:
+    def _monsters(self):
+        """One pass over every live monster: visible top-3 plus the hunt catalogue.
+
+        Both views share the same sight check and the same stable ids, so the
+        prompt can name a hunt target that is also visible as a threat, and the
+        engine is only raycast once per monster per tick.
+        """
+
         visible = []
+        catalogue = []
         live = 0
+        awake = 0
+        weapon = int(self.app.weapon)
         for thing in self.app.things_live:
             if thing[3] not in self.engine.MONST or thing[9] <= 0 or thing[10] >= 4:
                 continue
@@ -231,6 +297,54 @@ class SnapshotBuilder:
             line_of_sight = distance <= 1400 and self.app.sight_clear(
                 self.app.px, self.app.py, thing[0], thing[1]
             )
+            state = int(thing[10])
+            active = state != 0
+            attacking = state == 2
+            if active:
+                awake += 1
+            profile = adversary.monster_profile(self.engine, thing[3])
+            thing_id = self._thing_id(thing)
+            if profile is not None:
+                direct_path = not self._geometry_blocked(
+                    float(self.app.px),
+                    float(self.app.py),
+                    float(thing[0]),
+                    float(thing[1]),
+                    radius=0,
+                )
+                catalogue.append(
+                    MonsterSnapshot(
+                        id=thing_id,
+                        kind=int(thing[3]),
+                        category=profile.category,
+                        x=round(float(thing[0]), 3),
+                        y=round(float(thing[1]), 3),
+                        bearing=round(bearing, 6),
+                        bearing_word=_bearing_word(bearing),
+                        distance=round(distance, 3),
+                        distance_word=_distance_word(distance),
+                        hp=int(thing[9]),
+                        hp_fraction=round(min(1.0, max(0.0, thing[9] / profile.hp)), 3),
+                        awake=active,
+                        attacking=attacking,
+                        has_los=bool(line_of_sight),
+                        direct_path=direct_path,
+                        aligned=abs(bearing)
+                        <= max(0.025, math.atan2(float(thing[12]) + 6.0, max(distance, 1.0))),
+                        shots_to_kill=adversary.shots_to_kill(self.engine, thing[3], weapon),
+                        kill_seconds=adversary.kill_seconds(self.engine, thing[3], weapon),
+                        arrival_seconds=adversary.arrival_seconds(distance),
+                        kills_per_second=adversary.kills_per_second(
+                            self.engine,
+                            thing[3],
+                            weapon,
+                            distance,
+                            awake=active,
+                            has_los=bool(line_of_sight),
+                            direct_path=direct_path,
+                        ),
+                    )
+                )
             if not line_of_sight:
                 continue
             melee_reachable = not self._geometry_blocked(
@@ -240,9 +354,6 @@ class SnapshotBuilder:
                 float(thing[1]),
                 radius=0,
             )
-            state = int(thing[10])
-            active = state != 0
-            attacking = state == 2
             speed = self.engine.MONST[thing[3]][1] if state == 1 else 0.0
             vx = math.cos(thing[2]) * speed
             vy = math.sin(thing[2]) * speed
@@ -258,7 +369,7 @@ class SnapshotBuilder:
             )
             visible.append(
                 EnemySnapshot(
-                    id=self._thing_id(thing),
+                    id=thing_id,
                     category=self._enemy_category(thing),
                     bearing=round(bearing, 6),
                     bearing_word=_bearing_word(bearing),
@@ -276,7 +387,21 @@ class SnapshotBuilder:
             )
         visible.sort(key=lambda enemy: (-enemy.threat, enemy.id))
         kept = tuple(visible[:3])
-        return kept, max(0, len(visible) - len(kept)), live
+        catalogue.sort(
+            key=lambda monster: (
+                -monster.kills_per_second,
+                not monster.awake,
+                monster.distance,
+                monster.id,
+            )
+        )
+        return (
+            kept,
+            max(0, len(visible) - len(kept)),
+            live,
+            tuple(catalogue[:MAX_HUNT_TARGETS]),
+            awake,
+        )
 
     def _projectiles(self) -> tuple[ProjectileSnapshot, ...]:
         result = []
@@ -704,7 +829,13 @@ class SnapshotBuilder:
             index = farthest + 1
         return smoothed
 
-    def _navigation(self, tick: int) -> NavigationSnapshot | None:
+    def _nav_graph(self):
+        """The subsector traversal graph: portals, doors, keys and exits.
+
+        ``_navigation`` and ``_hunt_route`` share it so the way to the exit and
+        the way to a monster can never disagree about what is passable.
+        """
+
         level = self.app.lvl
         exits = []
         graph = {
@@ -756,6 +887,10 @@ class SnapshotBuilder:
                     if second_node not in graph[first_node]:
                         graph[first_node].append(second_node)
                     connecting_line.setdefault((first_node, second_node), line_index)
+        return level, exits, graph, connecting_line, line_subsectors
+
+    def _navigation(self, tick: int) -> NavigationSnapshot | None:
+        level, exits, graph, connecting_line, line_subsectors = self._nav_graph()
         if not exits:
             return None
         start = self._point_subsector(self.app.px, self.app.py)
@@ -983,6 +1118,78 @@ class SnapshotBuilder:
             use_when_near=use_when_near and not transitions,
         )
 
+    def _hunt_route(self, tick: int, target) -> NavigationSnapshot | None:
+        """The way to one monster: same graph as the exit route, own cache.
+
+        Chasing a raw bearing walks into walls and oscillates in corners.  This
+        returns the first waypoint of the actual subsector path -- through
+        doors and lifts when needed -- so ``guide_bearing`` always points at
+        somewhere the player can stand.
+        """
+
+        if target is None:
+            return None
+        level, exits, graph, connecting_line, _ = self._nav_graph()
+        start = self._point_subsector(self.app.px, self.app.py)
+        previous = {start: None}
+        queue = [start]
+        for subsector in queue:
+            for neighbor in sorted(graph.get(subsector, ())):
+                if neighbor not in previous:
+                    previous[neighbor] = subsector
+                    queue.append(neighbor)
+        goal = (float(target.x), float(target.y))
+        goal_subsector = self._point_subsector(goal[0], goal[1])
+        reachable = goal_subsector in previous and bool(previous)
+        if reachable:
+            selected = goal_subsector
+        else:
+            selected = min(
+                previous,
+                key=lambda subsector: math.dist(self._subsector_center(subsector), goal),
+            )
+        path = []
+        cursor = selected
+        while cursor is not None:
+            path.append(cursor)
+            cursor = previous[cursor]
+        path.reverse()
+        straight = not self._geometry_blocked(
+            float(self.app.px), float(self.app.py), goal[0], goal[1]
+        )
+        if straight:
+            waypoint = goal
+        elif len(path) >= 2:
+            line_index = connecting_line.get((path[0], path[1]))
+            if line_index is None:
+                waypoint = self._subsector_center(path[1])
+            else:
+                waypoint = self._portal_goal_subsector(line_index, path[1])
+        else:
+            waypoint = goal
+        key = (self._hunt_target_hint, round(waypoint[0], 1), round(waypoint[1], 1))
+        if key != self._hunt_key or tick - self._hunt_planned_tick >= 90:
+            self._hunt_points = self._grid_route(waypoint)
+            self._hunt_key = key
+            self._hunt_planned_tick = tick
+        while self._hunt_points and math.dist(
+            (float(self.app.px), float(self.app.py)), self._hunt_points[0]
+        ) < 18:
+            self._hunt_points.pop(0)
+        point = self._hunt_points[0] if self._hunt_points else waypoint
+        distance, bearing = self._relative(point[0], point[1])
+        return NavigationSnapshot(
+            objective=f"monster-{target.id}",
+            bearing=round(bearing, 6),
+            bearing_word=_bearing_word(bearing),
+            distance=round(distance, 3),
+            distance_word=_distance_word(distance),
+            next_sector=None,
+            route_length=max(0, len(path) - 1),
+            reachable=reachable,
+            use_when_near=False,
+        )
+
     def build(self, tick: int) -> DuumSnapshot:
         current_health = int(self.app.health)
         current_armor = int(self.app.armor)
@@ -1012,7 +1219,14 @@ class SnapshotBuilder:
             self._last_tick = int(tick)
         damage = self._last_damage
 
-        enemies, omitted, live_enemies = self._enemies()
+        enemies, omitted, live_enemies, hunt, awake = self._monsters()
+        hint = self._hunt_target_hint
+        hunt_target = next(
+            (monster for monster in hunt if monster.id == hint), None
+        ) if hint is not None else None
+        if hunt_target is None:
+            hunt_target = hunt[0] if hunt else None
+        hunt_route = self._hunt_route(int(tick), hunt_target)
         pickups = self._pickups()
         remaining_pickups = sum(
             thing[3] in self.engine.PICKUP and thing[10] == 0 for thing in self.app.things_live
@@ -1044,6 +1258,8 @@ class SnapshotBuilder:
             idle_ticks=self._idle_ticks,
             dead=bool(self.app.dead),
             finished=self.app.finish is not None,
+            monsters_remaining=live_enemies,
+            monsters_awake=awake,
         )
         return DuumSnapshot(
             tick=int(tick),
@@ -1058,4 +1274,7 @@ class SnapshotBuilder:
             navigation=self._navigation(int(tick)),
             omitted_enemies=omitted,
             episode=episode,
+            hidden_enemies=hunt,
+            hunt_route=hunt_route,
+            hunt_route_target_id=hunt_target.id if hunt_target is not None else None,
         )

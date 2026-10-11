@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lanzador unico: hace todo y abre el juego.
 #
-#   ./main.sh                      # Jev juega (pantalla completa + inspector)
+#   ./main.sh                      # Jev juega (una sola ventana: decision + inspector)
 #   ./main.sh --windowed           # ventana normal
 #   ./main.sh --headless --ticks 600
 #   ./main.sh --pilot manual       # juegas tu
@@ -12,8 +12,9 @@
 # jev-duum. Nada de esto modifica tu checkout duum/: si su HEAD no coincide con
 # el pin, se usa un worktree aparte.
 #
-# Por defecto aplica el mod de balance (3x vida, 2x dano) al motor que use; es
-# idempotente y reversible. Con JEV_VANILLA=1 arranca el juego original.
+# Por defecto aplica el mod de balance (10x vida, 10x dano, 20x municion) al
+# motor que use; es idempotente y reversible. Con JEV_VANILLA=1 arranca el
+# juego original.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,14 +54,28 @@ else
   DUUM="$WORKTREE"
 fi
 
-# Credencial: variable de entorno o jev-duum/.env
+# Credencial: variable de entorno o jev-duum/.env. La primera vez se pide una
+# sola vez y se guarda (git-ignored, nunca se imprime).
 if [ -z "${TYPESAFE_API_KEY:-}" ]; then
   if [ ! -f "$PKG/.env" ]; then
     cp "$PKG/.env.example" "$PKG/.env"
-    die "cree $PKG/.env — pega tu TYPESAFE_API_KEY y vuelve a ejecutar ./main.sh"
   fi
-  grep -qE '^TYPESAFE_API_KEY=.+' "$PKG/.env" \
-    || die "falta TYPESAFE_API_KEY en $PKG/.env (pega la clave y reintenta)"
+  if ! grep -qE '^TYPESAFE_API_KEY=.+' "$PKG/.env"; then
+    if [ -t 0 ]; then
+      printf 'Pega tu TYPESAFE_API_KEY y pulsa Enter (se guarda en %s): ' "$PKG/.env" >&2
+      read -rs _key
+      echo >&2
+      if [ -n "${_key:-}" ]; then
+        _tmp="$(mktemp)"
+        grep -v '^TYPESAFE_API_KEY=' "$PKG/.env" > "$_tmp" || true
+        printf 'TYPESAFE_API_KEY=%s\n' "$_key" >> "$_tmp"
+        mv "$_tmp" "$PKG/.env"
+        unset _key
+      fi
+    fi
+    grep -qE '^TYPESAFE_API_KEY=.+' "$PKG/.env" \
+      || die "falta TYPESAFE_API_KEY en $PKG/.env (pega la clave y reintenta)"
+  fi
 fi
 
 command -v uv >/dev/null || die "falta 'uv' (https://docs.astral.sh/uv)"

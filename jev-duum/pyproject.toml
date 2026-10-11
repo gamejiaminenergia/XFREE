@@ -16,6 +16,7 @@ dev = ["pytest>=8", "ruff>=0.12", "build>=1"]
 
 [project.scripts]
 jev-duum = "jev_duum.cli:main"
+jev-duum-autopsy = "jev_duum.autopsy:main"
 jev-duum-eval = "jev_duum.evaluation:main"
 jev-duum-prompt-eval = "jev_duum.prompt_eval:main"
 

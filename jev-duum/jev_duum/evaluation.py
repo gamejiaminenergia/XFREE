@@ -47,8 +47,8 @@ def run_evaluation(
     height=64,
     endpoint=None,
 ):
-    raw = JevDuumController(model, endpoint=endpoint, assisted=False)
-    assisted = JevDuumController(client=raw.client, assisted=True)
+    raw = JevDuumController(model, endpoint=endpoint, assisted=False, mission="clear")
+    assisted = JevDuumController(client=raw.client, assisted=True, mission="clear")
     assisted.metadata = dict(raw.metadata)
     assisted.metadata["policy"] = raw.metadata["policy"] + "; deterministic assistance enabled"
     definitions = [

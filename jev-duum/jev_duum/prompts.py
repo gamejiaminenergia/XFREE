@@ -20,6 +20,7 @@ from .snapshot import (
     EnemySnapshot,
     EpisodeSnapshot,
     InteractionSnapshot,
+    MonsterSnapshot,
     MovementOptionSnapshot,
     NavigationSnapshot,
     PickupSnapshot,
@@ -34,7 +35,7 @@ from .types import (
     ROUTE_FORWARD_TOLERANCE_RADIANS,
 )
 
-PROMPT_VERSIONS = ("v1", "v2", "v3", "v3w")
+PROMPT_VERSIONS = ("v1", "v2", "v3", "v3w", "v4")
 DEFAULT_PROMPT_VERSION = "v3w"
 
 ROUTE_AIM_TOLERANCE_DEGREES = round(math.degrees(ROUTE_AIM_TOLERANCE_RADIANS), 2)
@@ -368,7 +369,74 @@ def _with_world_model(questions: dict) -> dict:
 V3W_QUESTIONS = _with_world_model(V3_QUESTIONS)
 
 _QUESTIONS["v3w"] = V3W_QUESTIONS
-_EXPECTED_LABELS = {"movement": MOVEMENTS, "aim": AIMS, "interaction": INTERACTIONS}
+
+# ── v4: the model picks the next kill, the code owns the reflexes ──────────
+
+# Index labels keep the answer's label set constant while the monsters behind
+# them change every decision.  ``state.hunt.candidates[i].choice`` names the
+# label for each candidate.
+TARGET_CHOICES = ("target_1", "target_2", "target_3", "exit", "advance")
+
+_TARGET_INSTRUCTIONS = {
+    "role": "You choose the next kill; the code executes the movement and the shots.",
+    "task": "Pick which monster the player should hunt next, or leave for the exit.",
+    "rules": [
+        "`hunt.candidates` holds up to three monsters, each tagged with its `choice` label.",
+        "`hunt.candidates[i].kills_per_second` is the code's projection for going after it: arrival plus trigger time, discounted when the way is indirect.",
+        "`awake` true means the monster already comes to the player, so finishing it is cheap.",
+        "`route_reachable` false means the way itself is blocked for now; it is still a valid target, the code will detour.",
+        "Choose `target_n` for the monster with the best projected kill rate given the mission: kill everything, then leave.",
+        "Choose `exit` to abandon the hunt and head for the exit.",
+        "`advance` keeps the code's own ranking; it is the safe default.",
+        _SEE + " Choose exactly one option; there is no abstention.",
+    ],
+    "question": "Which monster should the player hunt next?",
+}
+
+_TARGET_CRITERIA = {
+    "target_1": {
+        "what": "Hunt the first candidate in `hunt.candidates`.",
+        "use_when": "its `kills_per_second` is the best of the listed candidates.",
+        "not_for": "another candidate has a clearly better projected kill rate.",
+    },
+    "target_2": {
+        "what": "Hunt the second candidate in `hunt.candidates`.",
+        "use_when": "it is awake and closer than the first candidate, or the first is unreachable.",
+        "not_for": "a candidate with a clearly better projected kill rate exists.",
+    },
+    "target_3": {
+        "what": "Hunt the third candidate in `hunt.candidates`.",
+        "use_when": "the first two are unreachable or already dying.",
+        "not_for": "a candidate with a clearly better projected kill rate exists.",
+    },
+    "exit": {
+        "what": "Stop hunting and head for the exit.",
+        "use_when": "the mission is to leave with monsters still alive.",
+        "not_for": "the mission is to clear the level and monsters remain reachable.",
+    },
+    "advance": {
+        "what": "Keep the code's own ranking for this decision.",
+        "use_when": "no candidate stands out and the default order is good enough.",
+        "not_for": "one candidate is clearly better than the rest.",
+    },
+}
+
+V4_QUESTIONS = {
+    **V3_QUESTIONS,
+    "target": {
+        "type": "choice",
+        "instructions": _TARGET_INSTRUCTIONS,
+        "criteria": _TARGET_CRITERIA,
+    },
+}
+
+_QUESTIONS["v4"] = V4_QUESTIONS
+_EXPECTED_LABELS = {
+    "movement": MOVEMENTS,
+    "aim": AIMS,
+    "interaction": INTERACTIONS,
+    "target": TARGET_CHOICES,
+}
 
 
 def build_questions(version: str, *, reverse_order: bool = False) -> dict:
@@ -505,7 +573,81 @@ def _objective(snapshot: DuumSnapshot) -> dict | None:
     }
 
 
-def _structured_state(snapshot: DuumSnapshot, strategy=None) -> dict:
+def _hunt_state(hunt) -> dict | None:
+    """The hunt order that travels in ``v4``: the mission, the numbers, the picks."""
+
+    if hunt is None:
+        return None
+    if isinstance(hunt, dict):
+        # A recorded hunt block replays verbatim.
+        return hunt
+    candidates = []
+    for index, monster in enumerate(hunt.candidates[:3]):
+        candidates.append(
+            {
+                "choice": TARGET_CHOICES[index],
+                "id": monster.id,
+                "kind": monster.category,
+                "bearing_degrees": _degrees(monster.bearing),
+                "bearing_word": monster.bearing_word,
+                "distance_units": round(float(monster.distance), 1),
+                "distance_word": monster.distance_word,
+                "hp_fraction": monster.hp_fraction,
+                "awake": bool(monster.awake),
+                "attacking": bool(monster.attacking),
+                "shot_would_hit": bool(monster.aligned),
+                "shots_to_kill": int(monster.shots_to_kill),
+                "kill_seconds": round(float(monster.kill_seconds), 2),
+                "arrival_seconds": round(float(monster.arrival_seconds), 2),
+                "kills_per_second": monster.kills_per_second,
+                "route_reachable": (
+                    bool(hunt.route_reachable) if monster.id == hunt.target_id else None
+                ),
+            }
+        )
+    return {
+        "mission": hunt.objective,
+        "monsters_remaining": hunt.monsters_remaining,
+        "monsters_awake": hunt.monsters_awake,
+        "unique_sectors": hunt.unique_sectors,
+        "chosen_target_id": hunt.target_id,
+        "target_bearing_degrees": (
+            None
+            if hunt.target_bearing is None
+            else _degrees(hunt.target_bearing)
+        ),
+        "target_distance_units": (
+            None if hunt.target_distance is None else round(hunt.target_distance, 1)
+        ),
+        "rationale": hunt.rationale,
+        "candidates": candidates,
+    }
+
+
+def _adversary_state(snapshot: DuumSnapshot) -> list:
+    """Per-threat combat arithmetic for the visible enemies (``v4`` only)."""
+
+    catalogue = {monster.id: monster for monster in snapshot.hidden_enemies}
+    threats = []
+    for enemy in snapshot.visible_enemies:
+        monster = catalogue.get(enemy.id)
+        threats.append(
+            {
+                "id": enemy.id,
+                "kind": enemy.category,
+                "shots_to_kill": monster.shots_to_kill if monster else None,
+                "kill_seconds": (
+                    round(float(monster.kill_seconds), 2) if monster else None
+                ),
+                "kills_per_second": monster.kills_per_second if monster else None,
+                "hp_fraction": monster.hp_fraction if monster else None,
+                "awake": bool(monster.awake) if monster else bool(enemy.active),
+            }
+        )
+    return threats
+
+
+def _structured_state(snapshot: DuumSnapshot, strategy=None, hunt=None) -> dict:
     player = snapshot.player
     episode = snapshot.episode
     if isinstance(strategy, dict):
@@ -554,6 +696,9 @@ def _structured_state(snapshot: DuumSnapshot, strategy=None) -> dict:
     }
     if block is not None:
         state["strategy"] = block
+    if hunt is not None:
+        state["hunt"] = _hunt_state(hunt)
+        state["adversary"] = _adversary_state(snapshot)
     return state
 
 
@@ -574,7 +719,11 @@ def _legacy_state(snapshot: DuumSnapshot) -> tuple[dict, dict[str, str]]:
 
 
 def build_state(
-    snapshot: DuumSnapshot, version: str, strategy=None, world_model: dict | None = None
+    snapshot: DuumSnapshot,
+    version: str,
+    strategy=None,
+    world_model: dict | None = None,
+    hunt=None,
 ) -> tuple[dict, dict[str, str]]:
     """Return ``(state, observations)`` for one snapshot and prompt version.
 
@@ -589,6 +738,10 @@ def build_state(
         return legacy_state, observations
     if version == "v2":
         return _structured_state(snapshot), observations
+    if version == "v4":
+        if strategy is None:
+            raise ValueError("prompt v4 needs a strategy")
+        return _structured_state(snapshot, strategy, hunt), observations
     if strategy is None:
         raise ValueError(f"prompt {version} needs a strategy")
     state = _structured_state(snapshot, strategy)
@@ -606,6 +759,7 @@ def snapshot_from_dict(payload: dict) -> DuumSnapshot:
     """
 
     navigation = payload.get("navigation")
+    hunt_route = payload.get("hunt_route")
     return DuumSnapshot(
         tick=int(payload["tick"]),
         map_name=str(payload["map_name"]),
@@ -631,4 +785,9 @@ def snapshot_from_dict(payload: dict) -> DuumSnapshot:
         navigation=NavigationSnapshot(**navigation) if navigation else None,
         omitted_enemies=int(payload["omitted_enemies"]),
         episode=EpisodeSnapshot(**payload["episode"]),
+        hidden_enemies=tuple(
+            MonsterSnapshot(**monster) for monster in payload.get("hidden_enemies", ())
+        ),
+        hunt_route=NavigationSnapshot(**hunt_route) if hunt_route else None,
+        hunt_route_target_id=payload.get("hunt_route_target_id"),
     )

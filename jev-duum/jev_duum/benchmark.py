@@ -7,8 +7,9 @@ import time
 from dataclasses import replace
 
 from .actions import controls_to_mask, ensure_usable_weapon, settle_assisted_controls
+from .autopsy import DamageLog
 from .integration import DuumRuntime
-from .pilots import RandomPilot, heuristic_controls, scripted_controls
+from .pilots import HunterPilot, RandomPilot, heuristic_controls, scripted_controls
 from .prompts import DEFAULT_PROMPT_VERSION
 from .scheduler import FractionalScheduler
 from .snapshot import SnapshotBuilder
@@ -36,11 +37,13 @@ def run_headless(
     controller=None,
     recorder=None,
     checkpoint_every=60,
+    damage_log=None,
 ):
     if pilot in ("jev-raw", "jev-assisted") and controller is None:
         raise ValueError("Jev pilot requires a controller")
     scheduler = FractionalScheduler(60, decision_rate)
     random_pilot = RandomPilot(seed)
+    hunter_pilot = HunterPilot()
     controls = DuumControls()
     decision_count = 0
     prediction_calls = 0
@@ -49,6 +52,9 @@ def run_headless(
     assistance = 0
     render_events = 0
     started = time.perf_counter()
+    damage = DamageLog(modules.engine) if damage_log else None
+    if damage is not None:
+        damage.__enter__()
     with DuumRuntime(modules, wad.path, map_name, width, height) as runtime:
         builder = SnapshotBuilder(runtime.app, modules.engine)
         snapshot = builder.build(0)
@@ -64,9 +70,17 @@ def run_headless(
                     cost_usd += decision.cost_usd
                     assistance += len(decision.assistance_events)
                     recorded = decision
+                    if decision.hunt is not None:
+                        builder.note_hunt_target(decision.hunt.get("target_id"))
                 elif pilot == "heuristic":
                     controls = heuristic_controls(snapshot)
                     decision_count += 1
+                elif pilot == "hunter":
+                    controls = hunter_pilot.decide(snapshot)
+                    decision_count += 1
+                    builder.note_hunt_target(
+                        hunter_pilot.plan.target_id if hunter_pilot.plan else None
+                    )
                 elif pilot == "random":
                     controls = random_pilot.decide(snapshot)
                     decision_count += 1
@@ -98,6 +112,8 @@ def run_headless(
             previous_controls = controls
             if pilot == "jev-assisted":
                 controls = settle_assisted_controls(controls, snapshot)
+            elif pilot == "hunter":
+                controls = hunter_pilot.reflex(snapshot)
             # Use is a semantic one-shot. Release it after its application tick.
             if controls.interaction == "use":
                 controls = replace(controls, interaction="neither")
@@ -107,6 +123,9 @@ def run_headless(
                 break
         final_state = state
         engine_ticks = runtime.ticks
+    if damage is not None:
+        damage.__exit__(None, None, None)
+        damage.write(damage_log)
     wall_seconds = time.perf_counter() - started
     summary = {
         "pilot": pilot,
@@ -135,7 +154,18 @@ def run_headless(
         "final": snapshot.to_dict(),
         "final_snapshot_hash": snapshot.state_hash(),
         "final_engine_hash": final_state.state_hash(),
+        "kills_per_minute": (
+            snapshot.episode.kills / (snapshot.episode.game_time / 60.0)
+            if snapshot.episode.game_time
+            else None
+        ),
+        "monsters_remaining": snapshot.episode.monsters_remaining,
+        "monsters_awake": snapshot.episode.monsters_awake,
+        "stuck_seconds": snapshot.episode.stuck_ticks / 60.0,
     }
+    if damage is not None:
+        summary["damage_log"] = str(damage_log)
+        summary["damage_by_source"] = damage.by_source()
     if recorder:
         summary["recording"] = str(recorder.finish(summary))
     return summary

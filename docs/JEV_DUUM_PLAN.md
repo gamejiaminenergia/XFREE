@@ -371,3 +371,64 @@ resuelto y metadata. Es fire-and-forget en un hilo daemon: nunca bloquea ni
 rompe una decisión, cuenta los fallos en `logger.stats["dropped"]`,
 `JEV_NO_LOG=1` lo apaga y `JEV_LOG_URL` lo redirige. Comprobado: una corrida de
 600 ticks deja 100 documentos recuperables por `GET /calls`.
+
+## 13. Modelo del adversario y caza en código — ejecutado
+
+**Pregunta.** "Los enemigos no tienen inteligencia: ¿por qué le ganan al
+modelo?". Medido, la respuesta no era inteligencia enemiga, sino aritmética sin
+modelar y una doctrina equivocada.
+
+**Diagnóstico (offline, sin API).**
+
+- Rejugando `artifacts/long-v3.json` (vanila) con `jev-duum-autopsy` se ve que
+  el bot muere a los ~15 s con 104 de daño repartidos en 8 impactos: bolas de
+  imp/caco y melés a bocajarro. El `strategy.py` de entonces fijaba
+  `fight` con `guide_bearing = ruta a la salida` y la regla "sigue avanzando
+  mientras peleas": el bot caminaba hacia los enemigos en vez de cubrirse.
+- El piloto `heuristic` (40 líneas) sobrevive 60 s con 0 daño bajo el mod y
+  consigue **2 bajas**: el anti-atasco actual retrocedía contra la misma pared
+  y oscilaba. Ni la política pasiva ni la agresiva resolvían el problema.
+- E1M1 de Freedoom tiene **29 monstruos** (10 shotgunners, 10 imps, 4 zombiemen
+  y 5 pinkies), todos dormidos al inicio, y **ninguna arma recogible**: toda la
+  partida se juega con la pistola.
+
+**Lo que se construyó.**
+
+- `jev_duum/adversary.py`: modelo del adversario derivado de `MONST`/`WEAP` del
+  motor (disparos para matar, segundos de gatillo, DPS entrante con la
+  probabilidad de acierto del propio motor, regla de despertar). Los
+  multiplicadores del mod entran por `getattr`, así que el código funciona con
+  y sin él.
+- `snapshot.hidden_enemies`: catálogo de **todos** los monstruos vivos
+  (dormidos incluidos) con `shots_to_kill`, `kill_seconds`, `arrival_seconds` y
+  `kills_per_second` proyectado — la misma cifra que rankea el código y viaja
+  al modelo.
+- `jev_duum/hunt.py`: plan de caza (misión `clear`), objetivo pegajoso, reloj
+  de progreso y lista negra de objetivos inalcanzables.
+- `snapshot.hunt_route`: ruta real por el grafo de subsectores hasta el
+  monstruo elegido (usa el mismo grafo que la ruta a la salida, con puertas y
+  llaves). Perseguir el rumbo directo oscilaba contra las paredes.
+- `jev_duum/reflex.py`: capa de 60 Hz compartida por el guardia y el cazador
+  (esquiva, rechazo de movimiento inseguro, centrado de mira, `use` para
+  puertas, disparo con corredor) y memoria de movimiento para no vibrar.
+- `prompts.py` `v4`: añade `state.hunt`, `state.adversary` y una cuarta
+  pregunta `target` (`target_1..3` / `exit` / `advance`). Jev elige a quién
+  cazar; el código ejecuta. `v1`–`v3w` quedan congelados y siguen siendo el
+  default hasta medir el A/B.
+- Pilot determinista `hunter` (sin red) como línea base, `--mission clear|advance`,
+  `--damage-log` y la herramienta `jev-duum-autopsy`.
+
+**Medición (E1M1, 10 Hz, semilla 0, motor fijado + mod 10×/10×).**
+
+| | `heuristic` (antes) | `hunter` (código) |
+|---|---|---|
+| ticks = 1800 · 30 s | 2 bajas, 9 sectores | **9 bajas, 19 sectores** |
+| ticks = 600 · 10 s | — | 6 bajas, 15 sectores |
+| Segundos atascado | 0 (pero congelado por oscilación) | **0** |
+| Daño recibido (40 s) | 0 | 72 (66 melee, 6 proyectil) |
+
+El daño del cazador ya no es un misterio: viene de que se acerca a distancia de
+melee (los imps pegan a bocajarro dentro de 70 unidades). Es el dial de
+agresividad pendiente, no un fallo de navegación. La corrida larga (116 s) aún
+muere: 9 bajas a los 30 s y después se estanca en una zona con enemigos
+despiertos. Queda pendiente y así se reporta.

@@ -10,8 +10,9 @@
 - `map/` — schematic E1M1 knowledge (`sense.py`, `heuristics.py`,
   `doom_map.svg`), the source of truth, vendored into `jev_duum/_map/`.
 - `jev-log/` + `docker-compose.yml` — optional MongoDB/Express audit log.
-- `mods/balance.py` — reproducible, reversible engine patch (3× health, 2×
-  damage) applied to a pinned checkout; never committed into the engine.
+- `mods/balance.py` — reproducible, reversible engine patch (10× player health,
+  10× player damage) applied to a pinned checkout; never committed into the
+  engine.
 - `docs/` — plans and measured results. `duum/` is the pinned external engine
   (MPL-2.0, git-ignored, never edited).
 

@@ -9,6 +9,7 @@ from jev_duum.integration import DuumRuntime, load_duum
 from jev_duum.prompts import (
     CONVENTIONS,
     PROMPT_VERSIONS,
+    TARGET_CHOICES,
     V1_QUESTIONS,
     build_questions,
     build_state,
@@ -29,9 +30,13 @@ def test_v1_questions_are_frozen_and_v2_keeps_the_same_labels():
     assert build_questions("v1") == V1_QUESTIONS
     for version in PROMPT_VERSIONS:
         questions = build_questions(version)
-        assert set(questions) == set(LABELS)
+        # v4 adds the hunt-target question on top of the frozen three.
+        assert set(questions) == (
+            set(LABELS) | {"target"} if version == "v4" else set(LABELS)
+        )
         for name, labels in LABELS.items():
             assert set(questions[name]["criteria"]) == set(labels)
+    assert set(build_questions("v4")["target"]["criteria"]) == set(TARGET_CHOICES)
 
 
 @pytest.mark.parametrize("version", ("v2", "v3"))

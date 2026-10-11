@@ -18,6 +18,7 @@ import json
 import re
 import statistics
 import time
+from collections import deque
 from dataclasses import replace
 
 from .actions import controls_to_mask, ensure_usable_weapon, settle_assisted_controls
@@ -222,6 +223,85 @@ class BarRow:
             self.set(last[1], best=last[2])
 
 
+class HeroBar:
+    """A big decision axis for the single window's hero: chosen action + conf.
+
+    It is the same information as the inspector's ``BarRow`` grid but sized (and
+    coloured) to be read from across a room, which is why the single window
+    carries it in the centre instead of only inside a tab.
+    """
+
+    def __init__(self, tkinter, parent, label, color):
+        self.color = color
+        self.frame = tkinter.Frame(parent, bg=CARD)
+        self.frame.pack(fill="x", pady=(0, 12))
+        head = tkinter.Frame(self.frame, bg=CARD)
+        head.pack(fill="x")
+        tkinter.Label(
+            head, text=label, bg=CARD, fg=MUTED, font=(FONTS["mono"], 11, "bold")
+        ).pack(side="left")
+        self.choice = tkinter.Label(
+            head, text="—", bg=CARD, fg=color, font=(FONTS["ui"], 28, "bold")
+        )
+        self.choice.pack(side="left", padx=(16, 0))
+        self.conf = tkinter.Label(
+            head, text="conf —", bg=CARD, fg=MUTED, font=(FONTS["mono"], 11, "bold"),
+            padx=9, pady=2,
+        )
+        self.conf.pack(side="right")
+        self.canvas = tkinter.Canvas(
+            self.frame, height=20, bg=TRACK, highlightthickness=0, bd=0
+        )
+        self.canvas.pack(fill="x", pady=(8, 4))
+        self.breakdown = tkinter.Label(
+            self.frame, text="", bg=CARD, fg=MUTED, font=(FONTS["mono"], 9), anchor="w"
+        )
+        self.breakdown.pack(fill="x")
+        self._last = None
+
+    def set(self, distribution, confidence):
+        if not distribution:
+            self.reset()
+            return
+        best = max(distribution, key=distribution.__getitem__)
+        width = self.canvas.winfo_width()
+        if width <= 1:
+            width = 400
+        key = (width, tuple(sorted(distribution.items())), confidence)
+        if key == self._last:
+            return
+        self._last = key
+        self.choice.configure(text=best.upper().replace("_", " "))
+        if confidence is None:
+            self.conf.configure(text="conf n/a", bg=CARD, fg=MUTED)
+        else:
+            tone = GREEN if confidence >= 0.7 else AMBER if confidence >= 0.4 else RED
+            self.conf.configure(text=f"conf {confidence:.2f}", bg=tone, fg="#10210f")
+        canvas = self.canvas
+        canvas.delete("all")
+        x = 0.0
+        for name, value in distribution.items():
+            segment = width * max(0.0, float(value))
+            canvas.create_rectangle(
+                x, 0, x + segment, 20, fill=self.color if name == best else TRACK,
+                outline=CARD,
+            )
+            x += segment
+        if x < width:
+            canvas.create_rectangle(x, 0, width, 20, fill=TRACK, outline=CARD)
+        others = "    ".join(
+            f"{name}={value:.2f}" for name, value in distribution.items() if name != best
+        )
+        self.breakdown.configure(text=f"alternativas:   {others}")
+
+    def reset(self):
+        self._last = None
+        self.choice.configure(text="—")
+        self.conf.configure(text="conf —", bg=CARD, fg=MUTED)
+        self.canvas.delete("all")
+        self.breakdown.configure(text="")
+
+
 class Pill:
     """A tiny label for a single compact value."""
 
@@ -412,6 +492,8 @@ class Dashboard:
         self.tk = tkinter
         self.window = window
         self.cache = DeltaCache()
+        self._history: deque = deque(maxlen=64)
+        self._history_sig = None
         self._latencies: list[float] = []
         self._cost = 0.0
         self._tokens = 0
@@ -421,8 +503,7 @@ class Dashboard:
         self._strategy_sig = None
         self._geo = None
         self._fullscreen = False
-        self._left_w = 252
-        self._right_w = 528
+        self._half = 0
         self.game_w = int(getattr(window.cv, "w", 320))
         self.game_h = int(getattr(window.cv, "h", 200))
         self.base_scale = max(1, int(getattr(window, "scale", 1)))
@@ -432,18 +513,21 @@ class Dashboard:
         root.resizable(True, True)
         window.tkcv.pack_forget()
 
-        self.left = tkinter.Frame(root, width=252, bg=PANEL)
-        self.left.grid(row=0, column=0, rowspan=3, sticky="nsew")
-        self.left.pack_propagate(False)
+        # Two equal halves: the game on the left, the decision + inspector on
+        # the right. The game canvas lives directly in the root grid (it is a
+        # child of the window), so it keeps the engine's own crisp integer zoom.
+        self.game_header = tkinter.Frame(root, bg=BG)
+        self.game_header.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 8))
+        self.game_bottom = tkinter.Frame(root, bg=BG)
+        self.game_bottom.grid(row=2, column=0, sticky="ew", padx=14, pady=(8, 12))
 
-        self.right = tkinter.Frame(root, width=528, bg=PANEL2)
-        self.right.grid(row=0, column=2, rowspan=3, sticky="nsew")
-        self.right.pack_propagate(False)
-        root.grid_rowconfigure(1, weight=1)
+        self.right = tkinter.Frame(root, bg=PANEL2)
+        self.right.grid(row=0, column=1, rowspan=3, sticky="nsew")
+        root.grid_columnconfigure(0, weight=1)
         root.grid_columnconfigure(1, weight=1)
+        root.grid_rowconfigure(1, weight=1)
 
-        self._build_left()
-        self._build_center(window)
+        self._build_game(window)
         self._build_right()
 
         root.bind("<Configure>", self._on_configure)
@@ -520,7 +604,8 @@ class Dashboard:
                        max(root.winfo_height(), root.winfo_reqheight()))
 
     def _relayout(self, total_w, total_h):
-        """Reflow the columns and scale the game/automap to the window size."""
+        """Two halves: the game on the left at its crisp integer zoom, the
+        decision + inspector on the right. Both columns share the width."""
 
         if total_w <= 1 or total_h <= 1:
             return
@@ -528,39 +613,26 @@ class Dashboard:
             return
         self._geo = (total_w, total_h)
 
-        left_w = 252 if total_w < 1500 else 264
-        right_w = 528 if total_w < 1500 else max(560, min(760, int(total_w * 0.34)))
-        if left_w != self._left_w:
-            self.left.configure(width=left_w)
-            self._left_w = left_w
+        half = max(360, int(total_w * 0.5))
+        if half != self._half:
+            self._half = half
             for meter in (self.health, self.armor, self.ammo):
                 meter.refresh()
-        if right_w != self._right_w:
-            self.right.configure(width=right_w)
-            self._right_w = right_w
             for rows in getattr(self, "bars", {}).values():
                 for row in rows.values():
                     row.refresh()
 
-        center_w = max(200, total_w - left_w - right_w - 40)
-        center_h = max(200, total_h - 30)
-
-        # The automap keeps its schematic aspect ratio and grows with the column
-        # without ever stealing too much height from the game view.
-        map_w = int(max(240, min(center_w - 24, 780)))
-        map_h = int(map_w * 407 / 730) + 16
-        max_map_h = max(160, int(center_h * 0.34))
-        if map_h > max_map_h:
-            map_h = max_map_h
-            map_w = int((map_h - 16) * 730 / 407)
+        # Schematic map under the game, then the largest integer zoom of the
+        # engine's own 320x200 canvas that fits the left half above it.
+        map_w = int(max(300, half - 32))
+        map_h = int(max(120, min(170, total_h * 0.15)))
         self.minimap.resize(map_w, map_h)
 
-        # Largest integer zoom that leaves room for the header and the automap.
-        map_block = map_h + 46
-        avail_h = max(self.game_h, center_h - map_block - 34)
+        strip_h = map_h + 190  # three meters + map + status/banner
+        avail_h = max(self.game_h, total_h - 44 - strip_h)
         scale = max(
             self.base_scale,
-            min(center_w // self.game_w, avail_h // self.game_h),
+            min(max(1, (half - 28) // self.game_w), avail_h // self.game_h),
         )
         if scale != self.window.scale:
             self.window.scale = scale
@@ -603,73 +675,44 @@ class Dashboard:
         widget.insert("1.0", content)
         widget.configure(state="disabled")
 
-    # -- left column ---------------------------------------------------------
-    def _build_left(self):
+    # -- left half: the game, at the engine's own crisp zoom -----------------
+    def _build_game(self, window):
         tk = self.tk
-        tk.Label(
-            self.left, text="DUUM", bg=PANEL, fg=ACCENT, font=(FONTS["mono"], 22, "bold")
-        ).pack(anchor="w", padx=16, pady=(18, 0))
-        tk.Label(
-            self.left, text="Jev local pilot", bg=PANEL, fg=MUTED, font=(FONTS["mono"], 9)
-        ).pack(anchor="w", padx=16, pady=(0, 14))
-
-        self.banner = tk.Label(
-            self.left, text="", bg=PANEL, fg=TEXT, font=(FONTS["mono"], 10, "bold"),
-            wraplength=220, justify="left", anchor="w", padx=10, pady=6,
-        )
-        self.banner.pack(side="bottom", fill="x", padx=12, pady=12)
-        tk.Label(
-            self.left, text="F11 · pantalla completa", bg=PANEL, fg=DIM,
-            font=(FONTS["mono"], 8),
-        ).pack(side="bottom", pady=(0, 4))
-
-        self.health = Meter(tk, self.left, "Health", GREEN)
-        self.armor = Meter(tk, self.left, "Armor", BLUE)
-        self.ammo = Meter(tk, self.left, "Ammo", GOLD)
-
-        card = Card(tk, self.left, "Estado", accent=ACCENT)
-        self.stats = tk.Label(
-            card.body, text="", justify="left", anchor="nw", bg=CARD, fg=TEXT,
-            font=(FONTS["mono"], 10),
-        )
-        self.stats.pack(fill="x")
-
-        card = Card(tk, self.left, "Sesión", accent=GREEN)
-        self.status = tk.Label(
-            card.body, text="", justify="left", anchor="nw", bg=CARD, fg=MUTED,
-            font=(FONTS["mono"], 9), wraplength=212,
-        )
-        self.status.pack(fill="x")
-
-    # -- center column -------------------------------------------------------
-    def _build_center(self, window):
-        tk = self.tk
-        root = window.root
-        header = tk.Frame(root, bg=BG)
-        header.grid(row=0, column=1, sticky="ew", padx=12, pady=(10, 6))
         self.map_label = tk.Label(
-            header, text="DUUM", bg=BG, fg=ACCENT, font=(FONTS["mono"], 13, "bold")
+            self.game_header, text="DUUM", bg=BG, fg=ACCENT, font=(FONTS["mono"], 16, "bold")
         )
         self.map_label.pack(side="left")
-        self.live_label = tk.Label(header, text="", bg=BG, fg=MUTED, font=(FONTS["mono"], 9))
+        self.live_label = tk.Label(
+            self.game_header, text="", bg=BG, fg=MUTED, font=(FONTS["mono"], 10)
+        )
         self.live_label.pack(side="right")
 
         window.tkcv.configure(
-            highlightthickness=2,
-            highlightbackground=BORDER,
-            highlightcolor=ACCENT,
-            bg="black",
+            highlightthickness=2, highlightbackground=BORDER, highlightcolor=ACCENT, bg="black"
         )
-        window.tkcv.grid(row=1, column=1)
+        window.tkcv.grid(row=1, column=0)
         self.stale_overlay = StaleOverlay(tk, window.tkcv)
 
-        bottom = tk.Frame(root, bg=BG)
-        bottom.grid(row=2, column=1, sticky="nsew", padx=12, pady=(6, 10))
-        card = Card(tk, bottom, "Automapa · riesgo sectorial", accent=VIOLET)
-        self.minimap = MiniMap(tk, card.body, width=336, height=214)
+        self.health = Meter(tk, self.game_bottom, "Health", GREEN, width=300)
+        self.armor = Meter(tk, self.game_bottom, "Armor", BLUE, width=300)
+        self.ammo = Meter(tk, self.game_bottom, "Ammo", GOLD, width=300)
+
+        card = Card(tk, self.game_bottom, "Automapa · riesgo sectorial", accent=VIOLET)
+        self.minimap = MiniMap(tk, card.body, width=660, height=170)
         self.minimap.canvas.pack(anchor="center")
 
-    # -- right column --------------------------------------------------------
+        self.stats = tk.Label(
+            self.game_bottom, text="", anchor="w", justify="left", bg=BG, fg=MUTED,
+            font=(FONTS["mono"], 9),
+        )
+        self.stats.pack(fill="x", pady=(6, 0))
+        self.banner = tk.Label(
+            self.game_bottom, text="", bg=PANEL, fg=TEXT, font=(FONTS["mono"], 10, "bold"),
+            wraplength=760, justify="left", anchor="w", padx=10, pady=4,
+        )
+        self.banner.pack(fill="x", pady=(6, 0))
+
+    # -- right half: the decision and the inspector --------------------------
     def _build_right(self):
         tk = self.tk
         header = tk.Frame(self.right, bg=PANEL2)
@@ -683,12 +726,17 @@ class Dashboard:
             font=(FONTS["mono"], 15, "bold"),
         ).pack(anchor="w")
         self.mode = tk.Label(
-            header, text="", bg=PANEL2, fg=MUTED, font=(FONTS["mono"], 8), justify="left"
+            header, text="", bg=PANEL2, fg=MUTED, font=(FONTS["mono"], 8), justify="left",
+            wraplength=460,
         )
         self.mode.pack(anchor="w", pady=(2, 0))
+        self.status = tk.Label(
+            header, text="", bg=PANEL2, fg=DIM, font=(FONTS["mono"], 8), justify="left",
+        )
+        self.status.pack(anchor="w", pady=(2, 0))
 
         strip = tk.Frame(self.right, bg=PANEL2)
-        strip.pack(fill="x", padx=16, pady=(10, 8))
+        strip.pack(fill="x", padx=16, pady=(10, 6))
         self._tiles = {}
         for column, (key, caption) in enumerate(
             (("decisions", "DECISIONES"), ("p50", "p50 ms"), ("p95", "p95 ms"), ("cost", "COSTO"))
@@ -703,6 +751,33 @@ class Dashboard:
             )
             self._tiles[key] = value
 
+        # hero: the decision, the protagonist of this window
+        card = Card(tk, self.right, "The AI's decision", accent=GREEN)
+        tk.Label(
+            card.body, text="una petición · tres preguntas tipadas · probabilidades",
+            bg=CARD, fg=DIM, font=(FONTS["mono"], 9),
+        ).pack(anchor="w", pady=(0, 10))
+        self.hero = {}
+        for axis, title, accent in (
+            ("movement", "MOVIMIENTO", ACCENT),
+            ("aim", "APUNTADO", VIOLET),
+            ("interaction", "ACCIÓN", GREEN),
+        ):
+            self.hero[axis] = HeroBar(tk, card.body, title, accent)
+
+        self.guard = tk.Frame(
+            card.body, bg="#2a2110", highlightbackground=AMBER, highlightthickness=1
+        )
+        self.guard.pack(fill="x", pady=(6, 0))
+        self.guard_title = tk.Label(
+            self.guard, text="", bg="#2a2110", fg=AMBER, font=(FONTS["mono"], 10, "bold")
+        )
+        self.guard_title.pack(anchor="w", padx=12, pady=(8, 2))
+        self.guard_body = tk.Frame(self.guard, bg="#2a2110")
+        self.guard_body.pack(fill="x")
+        self.timeline = tk.Canvas(card.body, height=30, bg=CARD, highlightthickness=0, bd=0)
+        self.timeline.pack(fill="x", pady=(10, 0))
+
         tabbar = tk.Frame(self.right, bg=PANEL2)
         tabbar.pack(fill="x", padx=16)
         self.scroll = ScrollFrame(tk, self.right, bg=PANEL2)
@@ -714,6 +789,7 @@ class Dashboard:
             ("response", "RESPUESTA", self._tab_response),
             ("request", "PETICIÓN", self._tab_request),
             ("world", "MUNDO", self._tab_world),
+            ("history", "HISTORIAL", self._tab_history),
         ):
             button = tk.Label(
                 tabbar, text=label, bg=PANEL2, fg=MUTED, font=(FONTS["mono"], 9, "bold"),
@@ -898,6 +974,13 @@ class Dashboard:
         )
         self.world_note.pack(fill="x", pady=(2, 0))
 
+    def _tab_history(self, parent):
+        tk = self.tk
+        card = Card(tk, parent, "Historial de decisiones", accent=GOLD)
+        self.history_body = tk.Frame(card.body, bg=CARD)
+        self.history_body.pack(fill="x")
+        self._history_widgets_sig = None
+
     # -- update --------------------------------------------------------------
     def update(self, *, pilot, snapshot, decision, controls, worker, stale, error, log_stats=None):
         phase = (snapshot.tick // 4) % 2
@@ -964,15 +1047,17 @@ class Dashboard:
         self._label(
             "mode",
             self.mode,
-            f"{pilot} · api.typesafe.ai · estado semántico, sin píxeles"
-            + (f" · prompt {prompt}" if prompt else ""),
+            f"{pilot} · api.typesafe.ai\n"
+            f"estado semántico, sin píxeles" + (f" · prompt {prompt}" if prompt else ""),
         )
 
         if decision is not None:
             self._account(decision)
+        self._update_hero(decision)
         self._update_tiles()
         self._update_world(readout, decision)
         self._update_request(decision)
+        self._update_history_tab()
         if decision is None:
             self._update_warmup(error)
         else:
@@ -998,6 +1083,20 @@ class Dashboard:
         self._cost += float(decision.cost_usd or 0.0)
         self._tokens += int((decision.input_tokens or {}).get("request", 0) or 0)
         self._decisions += 1
+        self._history.appendleft(
+            {
+                "n": self._decisions,
+                "movement": decision.applied_controls.movement,
+                "aim": decision.applied_controls.aim,
+                "interaction": decision.applied_controls.interaction,
+                "confidence": max(
+                    (value for value in decision.confidence.values() if value is not None),
+                    default=None,
+                ),
+            }
+        )
+        self._history_sig = None
+        self._history_widgets_sig = None
 
     def _update_tiles(self):
         p50 = _percentile(self._latencies, 0.50)
@@ -1010,6 +1109,96 @@ class Dashboard:
         }
         for key, value in tiles.items():
             self._label(f"tile-{key}", self._tiles[key], value)
+
+    # -- hero: the decision, front and centre --------------------------------
+    def _update_hero(self, decision):
+        for axis, bar in self.hero.items():
+            if decision is None:
+                bar.reset()
+            else:
+                bar.set(decision.probabilities.get(axis, {}), decision.confidence.get(axis))
+        self._update_guard(decision)
+        self._update_timeline()
+
+    def _update_guard(self, decision):
+        events = decision.assistance_events if decision is not None else ()
+        signature = tuple(
+            (event.kind, event.proposed, event.applied, event.reason) for event in events
+        )
+        if not self.cache.changed("hero-guard", signature):
+            return
+        for child in self.guard_body.winfo_children():
+            child.destroy()
+        if not events:
+            self._label("hero-guard-title", self.guard_title, "SIN INTERVENCIÓN DEL GUARDIA")
+            self.tk.Label(
+                self.guard_body, text="se aplicó exactamente lo que propuso el modelo",
+                bg="#2a2110", fg=MUTED, font=(FONTS["mono"], 9), anchor="w",
+            ).pack(anchor="w", padx=12, pady=(0, 8))
+            return
+        self._label(
+            "hero-guard-title", self.guard_title, "INTERVENCIÓN DEL GUARDIA DETERMINISTA"
+        )
+        for event in events:
+            self.tk.Label(
+                self.guard_body,
+                text=f"el modelo dijo «{event.proposed}» → aplicado «{event.applied}» · {event.reason}",
+                bg="#2a2110", fg=TEXT, font=(FONTS["mono"], 9), anchor="w",
+                justify="left", wraplength=560,
+            ).pack(anchor="w", padx=12, pady=(0, 6))
+
+    def _update_timeline(self):
+        canvas = self.timeline
+        canvas.delete("all")
+        width = max(200, canvas.winfo_width())
+        items = list(self._history)[:24]
+        if not items:
+            return
+        step = width / 24
+        for index, item in enumerate(reversed(items)):
+            confidence = item["confidence"]
+            if confidence is None:
+                color = MUTED
+            elif confidence >= 0.7:
+                color = GREEN
+            elif confidence >= 0.4:
+                color = AMBER
+            else:
+                color = RED
+            height = 12 + (index * 5) % 22
+            x = index * step
+            canvas.create_rectangle(x + 2, 36 - height, x + step - 2, 36, fill=color, outline="")
+
+    def _update_history_tab(self):
+        signature = tuple(item["n"] for item in list(self._history)[:12])
+        if signature == self._history_widgets_sig:
+            return
+        self._history_widgets_sig = signature
+        for child in self.history_body.winfo_children():
+            child.destroy()
+        if not self._history:
+            self.tk.Label(
+                self.history_body, text="sin decisiones todavía", bg=CARD, fg=MUTED,
+                font=(FONTS["mono"], 9), anchor="w",
+            ).pack(fill="x")
+            return
+        for item in list(self._history)[:12]:
+            line = self.tk.Frame(self.history_body, bg=CARD)
+            line.pack(fill="x", pady=2)
+            self.tk.Label(
+                line, text=f"#{item['n']:04d}", width=6, anchor="w", bg=CARD, fg=ACCENT,
+                font=(FONTS["mono"], 9, "bold"),
+            ).pack(side="left")
+            confidence = item["confidence"]
+            color = MUTED if confidence is None else GREEN if confidence >= 0.7 else AMBER
+            self.tk.Label(
+                line, text=f"{item['movement']} · {item['aim']} · {item['interaction']}",
+                anchor="w", bg=CARD, fg=TEXT, font=(FONTS["mono"], 9),
+            ).pack(side="left", padx=(6, 0))
+            self.tk.Label(
+                line, text=f"conf {confidence:.2f}" if confidence is not None else "conf n/a",
+                anchor="e", bg=CARD, fg=color, font=(FONTS["mono"], 9, "bold"),
+            ).pack(side="right")
 
     # -- decision tab --------------------------------------------------------
     def _update_decision(self, decision, snapshot):
@@ -1289,6 +1478,8 @@ def run_jev_window(
                 controls = latest.applied_controls
                 applied_decisions += 1
                 latencies.append(latest.decision_ms)
+                if latest.hunt is not None:
+                    builder.note_hunt_target(latest.hunt.get("target_id"))
                 if on_decision:
                     on_decision(latest)
             else:
