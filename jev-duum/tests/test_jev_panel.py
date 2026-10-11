@@ -4,6 +4,7 @@ from jev_duum.panel import (
     RED,
     DeltaCache,
     _percentile,
+    _questions_summary,
     _state_index,
     _threshold_color,
     advance_completed_level,
@@ -41,13 +42,14 @@ def test_delta_cache_reports_only_real_changes():
     assert cache.changed("health", 63) is True
 
 
-def test_meter_threshold_colours_by_danger_and_blinks_when_critical():
-    assert _threshold_color(GREEN, 80, 70, 35, 0) == GREEN
-    assert _threshold_color(GREEN, 50, 70, 35, 0) == AMBER
-    assert _threshold_color(GREEN, 20, 70, 35, 0) == "#7a2020"
-    assert _threshold_color(GREEN, 20, 70, 35, 1) == RED
+def test_meter_threshold_colours_by_danger_and_keeps_red_when_critical():
+    assert _threshold_color(GREEN, 80, 70, 35) == GREEN
+    assert _threshold_color(GREEN, 50, 70, 35) == AMBER
+    # A critical value stays red: the old blink dropped it to #7a2020, 1.37:1
+    # against its own track, hiding the reading exactly when it mattered.
+    assert _threshold_color(GREEN, 20, 70, 35) == RED
     # No thresholds at all keeps the base colour (armor above its warning line).
-    assert _threshold_color(GREEN, 200, None, None, 0) == GREEN
+    assert _threshold_color(GREEN, 200, None, None) == GREEN
 
 
 def test_percentile_is_nearest_rank_and_safe_on_empty():
@@ -71,3 +73,23 @@ def test_state_index_lists_every_top_level_key_with_its_shape():
     assert "player" in text and "dict(2)" in text
     assert "threats" in text and "list(2)" in text
     assert _state_index(None) == "—"
+
+
+def test_questions_summary_names_every_typed_question_and_its_labels():
+    text = _questions_summary(
+        {
+            "movement": {
+                "type": "choice",
+                "instructions": {"task": "Where should the player move?"},
+                "criteria": {"forward": {}, "hold": {}},
+            }
+        }
+    )
+    assert "MOVIMIENTO" in text
+    assert "movement" in text
+    assert "choice" in text
+    assert "Where should the player move?" in text
+    assert "forward, hold" in text
+    # A prompt that carries no questions must not invent any.
+    assert _questions_summary(None) == "—"
+    assert _questions_summary({}) == "—"

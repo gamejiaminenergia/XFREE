@@ -1,5 +1,13 @@
 # Plan de mejora de la interfaz gráfica — solo Tk, sin web
 
+> **Estado (2026-10-11): superado por [`../DESIGN.md`](../DESIGN.md).**
+> Este plan describe la iteración que introdujo el inspector con pestañas en una
+> ventana única. El usuario descartó las pestañas ("quiero mostrar todo sin que
+> me toque mover o seleccionar cosas") y la presentación adoptó la disciplina de
+> un SCADA de transmisión. `panel.py` ya no tiene pestañas, ni scroll, ni
+> `ScrollFrame`, ni `Card`/`Pill` con acento de color. Se conserva como registro
+> de lo intentado; la guía viva es `DESIGN.md`.
+
 Fecha: 2026-10-11 · Estado: **implementado** · Restricción del usuario: **la sesión
 se ejecuta como hoy — ventana Tk + terminal; no se agrega nada web**
 

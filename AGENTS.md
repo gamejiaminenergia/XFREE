@@ -61,5 +61,9 @@ docker compose up -d                            # audit log :27017/:3000/:8081
 - Treat `duum/` as read-only and pinned by commit; the adapter validates HEAD.
 - The Tk panel is presentation only: keep it delta-updating and never touch the
   60 Hz loop, the snapshot contract or the decision worker.
+- The panel's presentation is governed by [`DESIGN.md`](DESIGN.md): a single
+  fixed screen, no tabs, no scrolling and no animation, colour reserved for
+  abnormal states, and colour never the only cue. Change the guide first, then
+  `panel.py`; review it offline with `tools/preview_panel.py` (0 $).
 - Adapters fail soft (return `None`, never raise into gameplay); pixels are
   never model input; never commit `.env`, keys or commercial WADs.

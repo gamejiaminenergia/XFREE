@@ -33,6 +33,7 @@ from jev_duum.controller import JevDuumController  # noqa: E402
 from jev_duum.integration import load_duum  # noqa: E402
 from jev_duum.panel import Dashboard  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
+from jev_duum.types import DuumControls  # noqa: E402
 from jev_duum.wad import default_wad_path, resolve_wad  # noqa: E402
 
 
@@ -179,57 +180,40 @@ def main(argv=None) -> int:
     root.geometry(f"{width}x{stage_h}+0+0")
     root.update()
     panel._relayout(width, stage_h)
-    panel.update(
-        pilot="jev-raw" if args.raw else "jev-assisted",
-        snapshot=snapshot,
-        decision=decision,
-        controls=decision.applied_controls,
-        worker=FakeWorker(),
-        stale=0,
-        error=None,
-        log_stats={"sent": 42, "dropped": 0},
-    )
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    shots = [
-        ("decision", "01-decision"),
-        ("response", "02-response"),
-        ("request", "03-request"),
-        ("world", "04-world"),
-        ("history", "05-history"),
-    ]
-    captured = False
-    for tab, name in shots:
-        panel._select_tab(tab)
-        panel.scroll.canvas.yview_moveto(0)
-        captured = _grab(root, args.out, name) or captured
+    def show(snapshot_now, decision_now, *, stale=0, error=None, log_stats=None, name=None):
+        panel.update(
+            pilot="jev-raw" if args.raw else "jev-assisted",
+            snapshot=snapshot_now,
+            decision=decision_now,
+            controls=(
+                decision_now.applied_controls if decision_now is not None else DuumControls()
+            ),
+            worker=FakeWorker(),
+            stale=stale,
+            error=error,
+            log_stats=log_stats,
+        )
+        return _grab(root, args.out, name) if name else False
+
+    # The window has no tabs: one screenshot per state the panel can be in.
+    captured = show(snapshot, decision, log_stats={"sent": 42, "dropped": 0},
+                    name="01-en-vivo")
+    captured = show(snapshot, None, name="02-esperando") or captured
 
     low = replace(
         snapshot,
         player=replace(snapshot.player, health=22, armor=30, ammo=6),
-        episode=replace(snapshot.episode, damage_received=140, kills=5),
+        episode=replace(snapshot.episode, damage_received=140, kills=5,
+                        stuck_ticks=18, projectiles=3),
     )
-    panel._select_tab("decision")
-    panel.update(
-        pilot="jev-assisted", snapshot=low, decision=decision,
-        controls=decision.applied_controls, worker=FakeWorker(), stale=0,
-        error=None, log_stats=None,
-    )
-    captured = _grab(root, args.out, "06-critical") or captured
-
-    panel.update(
-        pilot="jev-assisted", snapshot=snapshot, decision=decision,
-        controls=decision.applied_controls, worker=FakeWorker(), stale=17,
-        error=None, log_stats=None,
-    )
-    captured = _grab(root, args.out, "07-stale") or captured
-
-    panel.update(
-        pilot="jev-assisted", snapshot=snapshot, decision=decision,
-        controls=decision.applied_controls, worker=FakeWorker(), stale=0,
-        error="ReadTimeout: api.typesafe.ai did not answer in 20s", log_stats=None,
-    )
-    captured = _grab(root, args.out, "08-error") or captured
+    captured = show(low, decision, log_stats={"sent": 42, "dropped": 0},
+                    name="03-salud-critica") or captured
+    captured = show(snapshot, decision, stale=17, name="04-obsoleta") or captured
+    captured = show(
+        snapshot, decision, error="ReadTimeout: api.typesafe.ai did not answer in 20s",
+        name="05-sin-modelo",
+    ) or captured
 
     if not captured:
         print(

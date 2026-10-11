@@ -79,27 +79,51 @@ class MiniMap:
     def resize(self, width: int, height: int) -> None:
         """Fit the automap into a new box, keeping the schematic aspect ratio."""
 
+        self.fit(width, height)
+        self.canvas.configure(width=self.width, height=self.height)
+
+    def fit(self, width: int, height: int) -> None:
+        """Reproject for a box the geometry manager already stretched us to.
+
+        Separate from ``resize`` on purpose: ``resize`` asks the canvas to
+        change size, and calling it from the canvas's own ``<Configure>`` made
+        the request grow the cell that grew the request until Tk died with
+        ``X Error: BadAlloc``.  ``fit`` only redraws.
+        """
+
         width = max(180, int(width))
         height = max(120, int(height))
         if (width, height) == (self.width, self.height):
             return
         self.width = width
         self.height = height
-        self.canvas.configure(width=width, height=height)
         self._recompute_projection()
         if self._last is not None:
             snapshot, readout, aim_assisted = self._last
             self.render(snapshot, readout, aim_assisted=aim_assisted)
 
     def _recompute_projection(self):
+        """Project the schematic into the canvas's real size.
+
+        The canvas is stretched by its geometry manager, so the widget's own
+        size is the truth; ``self.width`` is only a fallback for a canvas that
+        has not been mapped yet.  Trusting the stored value drew a map laid out
+        for an older, wider box and cropped it.
+        """
+
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+        if width > 1 and height > 1:
+            self.width = width
+            self.height = height
         minx, maxx, miny, maxy = SVG_BOUNDS
         pad = 8
         span_x, span_y = maxx - minx, maxy - miny
-        scale = min((self.width - 2 * pad) / span_x, (self.height - 2 * pad) / span_y)
+        scale = min((self.width - 2 * pad) / span_x, (self.height - 2 * pad - 18) / span_y)
         self.scale = scale
         self._minx, self._miny = minx, miny
         self._ox = pad + ((self.width - 2 * pad) - span_x * scale) / 2
-        self._oy = pad + ((self.height - 2 * pad) - span_y * scale) / 2
+        self._oy = pad + ((self.height - 2 * pad - 18) - span_y * scale) / 2
 
     # -- projection ----------------------------------------------------------
     def to_canvas(self, x: float, y: float) -> tuple[float, float]:
@@ -268,10 +292,9 @@ class MiniMap:
         )
 
     def _draw_caption(self, canvas, readout):
-        canvas.create_rectangle(
-            1, self.height - 18, self.width - 1, self.height - 1,
-            fill=BACKDROP, outline="",
-        )
+        band = self.height - 18
+        canvas.create_rectangle(1, band, self.width - 1, self.height - 1, fill=BACKDROP,
+                                outline="")
         if readout is None or not readout.available:
             canvas.create_text(
                 8, self.height - 8, anchor="sw", fill=MUTED,
@@ -287,10 +310,38 @@ class MiniMap:
             8, self.height - 8, anchor="sw", fill=MUTED,
             text=" · ".join(parts), font=("DejaVu Sans Mono", 8),
         )
-        canvas.create_text(
-            self.width - 8, self.height - 8, anchor="se", fill=MUTED,
-            text="▲ agente  ◎ objetivo  ▸ rumbo", font=("DejaVu Sans Mono", 7),
+        self._draw_legend(canvas, band)
+
+    def _draw_legend(self, canvas, band):
+        """The map's key, drawn with the marks the map itself uses.
+
+        Unicode arrows and circles standing in for an icon system read as
+        decoration; an operator legend shows the actual symbol.
+        """
+
+        y = band + 9
+        x = self.width - 8
+        entries = (
+            ("rumbo", GUIDE),
+            ("objetivo", TARGET),
+            ("agente", PLAYER),
         )
+        for label, color in entries:
+            text = canvas.create_text(
+                x, y, anchor="se", fill=MUTED, text=label,
+                font=("DejaVu Sans Mono", 8),
+            )
+            left = canvas.bbox(text)[0] - 4
+            if label == "agente":
+                canvas.create_polygon(
+                    left - 8, y - 3, left - 2, y, left - 8, y + 3, fill=color, outline=""
+                )
+            elif label == "objetivo":
+                canvas.create_oval(left - 8, y - 3, left - 2, y + 3, outline=color, width=1)
+            else:
+                canvas.create_line(left - 8, y, left - 2, y, fill=color)
+                canvas.create_line(left - 5, y - 3, left - 2, y, left - 5, y + 3, fill=color)
+            x = left - 12
 
 
 class StaleOverlay:
@@ -317,12 +368,13 @@ class StaleOverlay:
             return
         width = int(float(canvas["width"]))
         if state[0] == "error":
-            color, text = "#7f1d1d", f"MODEL ERROR · {error}"[:80]
+            color, text = "#6f1a1a", f"SIN MODELO · {error}"[:80]
         else:
-            color, text = "#7a4a00", f"DECISIONES OBSOLETAS ×{stale}"
+            color, text = "#6b3f00", f"DECISIONES OBSOLETAS ×{stale}"
+        # Solid, not ``stipple="gray50"``: a one-pixel checkerboard shimmers on
+        # a projector and reads as texture rather than as an alert.
         canvas.create_rectangle(
-            0, 0, width, self.height, fill=color, outline="", stipple="gray50",
-            tags="hud",
+            0, 0, width, self.height, fill=color, outline="", tags="hud"
         )
         canvas.create_text(
             width / 2, self.height / 2, text=text, fill="#ffe7c2",

@@ -1,5 +1,13 @@
 # Pantalla de decisión para congreso — la IA como protagonista
 
+> **Estado (2026-10-11): superado por [`../DESIGN.md`](../DESIGN.md).**
+> Este plan describe la iteración que introdujo el inspector con pestañas en una
+> ventana única. El usuario descartó las pestañas ("quiero mostrar todo sin que
+> me toque mover o seleccionar cosas") y la presentación adoptó la disciplina de
+> un SCADA de transmisión. `panel.py` ya no tiene pestañas, ni scroll, ni
+> `ScrollFrame`, ni `Card`/`Pill` con acento de color. Se conserva como registro
+> de lo intentado; la guía viva es `DESIGN.md`.
+
 Fecha: 2026-10-11 · Estado: **implementado como ventana única, verificado offline**
 · Objetivo del usuario: mostrar **las decisiones de la IA** de la mejor manera
 posible (mucho detalle, claro y bonito) en un **congreso internacional de IA**;
