@@ -212,7 +212,13 @@ def dashboard(monkeypatch):
     root.update()
 
     state = {"readout": _readout()}
-    monkeypatch.setattr(panel_module, "read_world", lambda _snapshot: state["readout"])
+    # The readout is read in ``panel.dashboard``; patch it where it is resolved,
+    # and prove the seam took: otherwise the hostile states below would silently
+    # fall through the real (failing) reader and the test would pass vacuously.
+    monkeypatch.setattr(
+        panel_module.dashboard, "read_world", lambda _snapshot: state["readout"]
+    )
+    assert panel_module.dashboard.read_world(None) is state["readout"]
     yield panel, root, state
     root.destroy()
 

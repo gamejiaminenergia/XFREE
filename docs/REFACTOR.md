@@ -72,15 +72,52 @@ Medido antes de tocar el paquete, con el motor pinneado
 |---|---|
 | 0 — red de seguridad | hecho |
 | 1 — paleta única | hecho |
-| 2 — layout / format / delta | hecho |
-| 3 — widgets | hecho |
-| 4 — session / zones / dashboard | hecho |
-| 5 — loop + FrameDriver | hecho |
-| 6 — `panel/` como paquete | hecho |
-| 7 — `snapshot/` como paquete | hecho |
-| 8 — `prompts/` como paquete | hecho |
-| 9 — telemetry / overlays / prompt_eval | hecho |
-| 10 — documentación | hecho |
+| 2-6 — `panel.py` → paquete `panel/` | hecho (un solo commit: `panel.py` y `panel/` no pueden coexistir) |
+| 7 — `snapshot/` como paquete | pendiente |
+| 8 — `prompts/` como paquete | pendiente |
+| 9 — telemetry / overlays / prompt_eval | pendiente |
+| 10 — documentación | pendiente |
+
+### `panel.py` → `panel/` (fases 2-6)
+
+| Antes | Ahora |
+|---|---|
+| `panel.py` 1842 líneas | `panel/` con 16 módulos; el mayor, `dashboard.py`, 347 líneas |
+
+Reparto: `layout.py` (constantes), `format.py` (helpers puros), `delta.py`
+(`DeltaCache`), `render.py` (aplicar con delta), `widgets.py` (Panel/Flag/Bar/
+DecidRow/tabla/texto), `session.py` (`SessionModel`, el presenter sin Tk),
+`frame.py` (`HmiFrame`, el contrato de un refresco), `zones/` (banner, game,
+decision, link, events) y `dashboard.py` (compositor) + `loop.py` (bucle).
+
+Dos desviaciones conscientes del plan, ambas para preservar el invariante de
+geometría sin tocar el contrato de los tests:
+
+1. **Las zonas se combinan en `Dashboard` por clases colaboradoras, no por
+   composición con re-export.** `test_jev_hmi.py` mide la geometría de 45
+   widgets con nombre sobre un único objeto; mantenerlos en un solo objeto es lo
+   que hace el invariante comprobable de una vez, y el movimiento de código es
+   verbatim.
+2. **`Dashboard.update(**kwargs)` conserva su firma.** Construye un `HmiFrame`
+   y llama a `render(view)`, que es el contrato interno (un valor, ISP). Así el
+   único cambio de test es el destino del parche de `read_world`.
+
+### Equivalencia A/B del panel
+
+Las capturas no son un gate fiable: los KPI imprimen `decision_ms`, que es
+reloj real, así que dos corridas difieren legítimamente en unos píxeles. El
+verificador determinista es `tools/dump_panel_tree.py`: fija el reloj y vuelca
+un JSON de `ruta de widget -> (clase, texto, nº de items de canvas)` por cada uno
+de los cinco estados.
+
+```
+cmp <(python tools/dump_panel_tree.py ... antes) <(... después)
+```
+
+`panel.py` (fase 1) y el paquete `panel/` (fases 2-6) dan **byte-idéntico**
+(80 056 bytes) en los cinco estados: mismo árbol, mismos textos, mismos items de
+canvas. Los tests (179 passed, 5 skipped) incluyen el invariante de geometría y
+los hashes de contrato de prompts y snapshot.
 
 ## Verificación
 
