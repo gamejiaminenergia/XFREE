@@ -12,7 +12,9 @@ readme = "README.md"
 # The pilot stays thin (its only dependency is Duum); the web layer lives here.
 dependencies = [
   "fastapi>=0.115",
-  "uvicorn>=0.30",
+  # [standard] trae la implementación de WebSocket (websockets/wsproto); sin
+  # ella uvicorn rechaza el upgrade y /ws responde 404.
+  "uvicorn[standard]>=0.30",
   "jev-duum",
 ]
 
