@@ -311,7 +311,7 @@ class DecidRow:
             head, text="—", bg=PANEL, fg=VALUE, font=(FONTS["mono"], 20, "bold")
         )
         self.choice.pack(side="left", padx=(4, 0))
-        self.conf = Flag(tkinter, head)
+        self.conf = Flag(tkinter, head, width=10)
         self.conf.label.pack(side="right")
         self.canvas = tkinter.Canvas(
             self.frame, height=20, bg=TRACK, highlightthickness=0, bd=0
@@ -401,7 +401,7 @@ class DecidRow:
         canvas.create_line(width / 2, 0, width / 2, 20, fill=BG)
 
 
-def _table(tkinter, parent, rows, *, keys=STATIC, size=10, pairs=1):
+def _table(tkinter, parent, rows, *, keys=STATIC, size=10, pairs=1, value_width=None):
     """A TAG/value table; returns the labels by key.
 
     With ``pairs=2`` the rows are laid out in two side-by-side blocks, which
@@ -421,6 +421,7 @@ def _table(tkinter, parent, rows, *, keys=STATIC, size=10, pairs=1):
         ).grid(row=line, column=key_column, sticky="w", padx=(0 if block == 0 else 14, 6))
         value = tkinter.Label(
             body, text="—", anchor="w", bg=PANEL, fg=VALUE, font=(FONTS["mono"], size),
+            width=value_width or 0,
         )
         value.grid(row=line, column=key_column + 1, sticky="w")
         widgets[label] = value
@@ -489,6 +490,24 @@ def _controls_text(controls) -> str:
     return "   ".join(parts)
 
 
+def _clip_to_cell(widget, text):
+    """Never let a value widen its box.
+
+    An HMI cell has the width it was given; if the value does not fit, it is
+    the value that is clipped.  A box that grows and shrinks with its data
+    moves everything beside it and costs the operator a second look.
+    """
+
+    try:
+        width = int(widget.cget("width"))
+    except Exception:
+        return text
+    text = str(text)
+    if width > 0 and len(text) > width:
+        return text[: max(1, width - 1)] + "…"
+    return text
+
+
 def _guard_motive(events) -> str:
     """One line explaining a decision's intervention, for the event list."""
 
@@ -498,7 +517,7 @@ def _guard_motive(events) -> str:
     text = "   ".join(parts)
     if len(events) > 1:
         text = f"×{len(events)}  " + text
-    return text if len(text) <= 96 else text[:93] + "…"
+    return text if len(text) <= 72 else text[:71] + "…"
 
 
 def _target_text(target) -> str:
@@ -702,7 +721,7 @@ class Dashboard:
         state = (text, tuple(sorted(options.items())))
         if not self.cache.changed(key, state):
             return
-        widget.configure(text=text, **options)
+        widget.configure(text=_clip_to_cell(widget, text), **options)
 
     def _render_json(self, key, widget, payload):
         try:
@@ -760,7 +779,7 @@ class Dashboard:
             right, text="", bg=PANEL, fg=STATIC, font=(FONTS["mono"], 10, "bold")
         )
         self.alarm_count.pack(side="right", padx=(10, 0))
-        self.link_flag = Flag(tk, right)
+        self.link_flag = Flag(tk, right, width=15)
         self.link_flag.label.pack(side="right")
 
     # -- left column: the game, the measurements and the diagram ------------
@@ -782,7 +801,7 @@ class Dashboard:
                 ("ARMA", "weapon"), ("PUNTOS", "kills"), ("OBJETOS", "items"),
                 ("DAÑO", "damage"), ("SECTORES", "sectors"), ("PARADO", "stuck"),
             ),
-            size=9, pairs=2,
+            size=9, pairs=2, value_width=14,
         )
 
         diagram = Panel(tk, root, "Diagrama · amenazas y ruta", expand=True, manage=False)
@@ -809,7 +828,7 @@ class Dashboard:
                 ("SALA", "room"), ("PISO", "floor"), ("RUTA", "route"),
                 ("ENEMIGOS", "foes"), ("RIESGO", "risk"), ("OBJETIVO", "target"),
             ),
-            size=9, pairs=1,
+            size=9, pairs=1, value_width=24,
         )
         self.world_threats = tk.Label(
             side, text="", anchor="w", justify="left", bg=PANEL, fg=STATIC,
@@ -829,7 +848,7 @@ class Dashboard:
         tk = self.tk
         panel = Panel(tk, self.center, "Decisión de la IA", expand=True)
         self.decision_panel = panel
-        self.decision_flag = Flag(tk, panel.flag_holder)
+        self.decision_flag = Flag(tk, panel.flag_holder, width=15)
         self.decision_flag.label.pack(side="right")
         self.axes: dict = {}
         self.axes_body = tk.Frame(panel.body, bg=PANEL)
@@ -837,7 +856,7 @@ class Dashboard:
 
         guard = Panel(tk, self.center, "Guardia determinista")
         self.guard_panel = guard
-        self.guard_flag = Flag(tk, guard.flag_holder)
+        self.guard_flag = Flag(tk, guard.flag_holder, width=16)
         self.guard_flag.label.pack(side="right")
         self._guard_table, self.guard_fields = _table(
             tk, guard.body,
@@ -916,7 +935,7 @@ class Dashboard:
                 ("MODELO", "model"), ("PROMPT", "prompt"), ("TOKENS", "tokens"),
                 ("TAMAÑO", "bytes"), ("CLAVES", "keys"), ("PREGUNTAS", "questions"),
             ),
-            size=9,
+            size=9, value_width=18,
         )
         tk.Label(
             panel.body, text="ÍNDICE DEL ESTADO", anchor="w", bg=PANEL, fg=STATIC,
@@ -943,7 +962,7 @@ class Dashboard:
                 ("DECISIÓN", "decision"), ("EDAD", "age"), ("LLAMADAS", "exec"),
                 ("BITÁCORA", "log"),
             ),
-            size=9,
+            size=9, value_width=26,
         )
         tk.Label(
             panel.body, text="RESPUESTA CRUDA", anchor="w", bg=PANEL, fg=STATIC,
@@ -1231,16 +1250,16 @@ class Dashboard:
             return
         route = f"{readout.route_steps} salas"
         if readout.route_rooms:
-            route += " " + " → ".join(readout.route_rooms[:3])
+            route += "  " + "→".join(readout.route_rooms[:2])
         fields = {
             "room": f"{readout.room or '?'}"
             + (f" ({readout.room_kind})" if readout.room_kind else ""),
             "floor": f"{readout.floor or '—'}" + ("  NUKAGE" if readout.nukage else ""),
             "route": route,
-            "foes": f"{readout.foes_in_sight} vista / {readout.hidden_foes} ocultos"
-            f" / {readout.foes_total} total",
-            "risk": f"peor sector {readout.worst_sector} = {readout.worst_risk}"
-            f"   medio {readout.overall_risk}",
+            "foes": f"{readout.foes_in_sight} vis  {readout.hidden_foes} ocu"
+            f"  {readout.foes_total} tot",
+            "risk": f"p{readout.worst_sector} {readout.worst_risk}"
+            f"  medio {readout.overall_risk}",
             "target": _target_text(readout.recommended_target),
         }
         for key, value in fields.items():
@@ -1373,7 +1392,7 @@ class Dashboard:
             "request": f"{decision.request_ms:.0f} ms",
             "decision": f"{decision.decision_ms:.0f} ms",
             "age": f"{age} ticks",
-            "exec": f"{decision.prediction_calls} llamada(s) · {decision.execution}",
+            "exec": f"{decision.prediction_calls} llamada · {decision.execution}",
             "log": (
                 f"{log_stats['sent']} enviados / {log_stats['dropped']} caídos"
                 if log_stats
