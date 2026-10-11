@@ -22,3 +22,12 @@ build/
 **/.env
 artifacts/
 **/artifacts/
+
+# Grabaciones de vídeo: binarios grandes, nunca versionadas. El índice
+# (video/README.md) y los .gitkeep sí se versionan; el medio, jamás.
+video/**/*.mp4
+video/**/*.mkv
+video/**/*.mov
+video/**/*.webm
+video/**/*.gif
+video/.ffmpeg-*.log

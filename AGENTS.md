@@ -36,6 +36,7 @@ uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)
 uv run --no-sync ruff check jev_duum tests      # lint
 uv run --no-sync python -m pytest -q            # 179 pass, 5 skip
 docker compose up -d                            # audit log :27017/:3000/:8081
+bash scripts/record.sh --launch --window        # graba la partida en video/
 ```
 
 Two dev tools review the interface offline, at 0 $:
@@ -43,6 +44,11 @@ Two dev tools review the interface offline, at 0 $:
 `tools/dump_panel_tree.py` (a deterministic dump of the whole widget tree, the
 safe gate for a behaviour-preserving refactor — screenshots print wall-clock
 latency and are not reproducible).
+
+`scripts/record.sh` records the demo into `video/<tipo>/` with a sortable name and
+a `.json` sidecar, using NVENC when the GPU allows it. `--window` crops to the
+game window; without it the whole desktop is captured, other monitors included.
+See [`video/README.md`](video/README.md).
 
 The five skips are the opt-in live smoke tests (`JEV_LIVE=1` plus a key). If the
 sibling `duum/` checkout has commits on top of the adapter's pin, the adapter's
