@@ -65,7 +65,7 @@ GREEN, AMBER, RED = OK, WARN, ALARM
 FONTS = {"mono": "DejaVu Sans Mono", "ui": "DejaVu Sans"}
 
 # Height of the event list pinned to the bottom of the window.
-EVENT_H = 160
+EVENT_H = 145
 # How many decisions the event list shows at once.
 EVENT_ROWS = 5
 
@@ -185,6 +185,7 @@ class Panel:
             self.frame.pack(fill="both" if expand else "x", expand=expand, pady=pady)
         head = tkinter.Frame(self.frame, bg=PANEL)
         head.pack(fill="x", padx=8, pady=(5, 0))
+        self.header = head
         self.title = tkinter.Label(
             head, text=title.upper(), bg=PANEL, fg=TITLE,
             font=(FONTS["mono"], 10, "bold"), anchor="w",
@@ -486,6 +487,18 @@ def _controls_text(controls) -> str:
     if target:
         parts.append(str(target))
     return "   ".join(parts)
+
+
+def _guard_motive(events) -> str:
+    """One line explaining a decision's intervention, for the event list."""
+
+    if not events:
+        return ""
+    parts = [f"{event.kind}: {event.proposed}→{event.applied}" for event in events]
+    text = "   ".join(parts)
+    if len(events) > 1:
+        text = f"×{len(events)}  " + text
+    return text if len(text) <= 96 else text[:93] + "…"
 
 
 def _target_text(target) -> str:
@@ -942,36 +955,52 @@ class Dashboard:
 
     # -- event list: newest first, one row per decision ---------------------
     def _build_events(self):
+        """A real event list: full width, one column per field.
+
+        The fields used to be packed left, so the strip spent two thirds of the
+        screen on nothing.  The last column takes the slack instead, and it
+        carries the thing that actually explains an event: why the guard moved.
+        """
+
         tk = self.tk
         panel = Panel(tk, self.bottom, "Eventos · último arriba")
-        header = tk.Frame(panel.body, bg=PANEL)
-        header.pack(fill="x", pady=(0, 2))
-        for text, width in (
-            ("#", 6), ("TICK", 8), ("MOV", 14), ("APU", 8), ("ACC", 9), ("OBJ", 8),
-            ("CONF", 6), ("ESTADO", 12),
-        ):
-            tk.Label(
-                header, text=text, width=width, anchor="w", bg=PANEL, fg=STATIC,
-                font=(FONTS["mono"], 9, "bold"),
-            ).pack(side="left")
+        # The loop's own telemetry sits in the header's blank right half rather
+        # than on a line of its own.
         self._event_note = tk.Label(
-            self.bottom, text="", anchor="w", bg=BG, fg=STATIC, font=(FONTS["mono"], 9)
+            panel.header, text="", anchor="e", bg=PANEL, fg=STATIC,
+            font=(FONTS["mono"], 9),
         )
-        self._event_note.pack(fill="x", pady=(3, 0))
-        for _ in range(EVENT_ROWS):
-            row = tk.Frame(panel.body, bg=PANEL)
-            row.pack(fill="x")
+        self._event_note.pack(side="right", padx=(0, 10))
+        # ``#  TICK  MOV  APU  ACC  OBJ  CONF  ms  ESTADO`` are fixed width;
+        # ``MOTIVO`` is the column that grows with the window.
+        self._event_columns = (
+            ("#", 6), ("TICK", 8), ("MOV", 14), ("APU", 8), ("ACC", 9), ("OBJ", 8),
+            ("CONF", 6), ("ms", 5), ("ESTADO", 12), ("MOTIVO / INTERVENCIÓN", 0),
+        )
+        body = tk.Frame(panel.body, bg=PANEL)
+        body.pack(fill="x")
+        header = tk.Frame(body, bg=PANEL)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 2))
+        for index, (text, width) in enumerate(self._event_columns):
+            label = tk.Label(
+                header, text=text, width=width or 1, anchor="w", bg=PANEL, fg=STATIC,
+                font=(FONTS["mono"], 9, "bold"),
+            )
+            label.grid(row=0, column=index, sticky="ew", padx=(0, 8))
+            header.grid_columnconfigure(index, weight=1 if width == 0 else 0)
+        for row_index in range(EVENT_ROWS):
+            row = tk.Frame(body, bg=PANEL)
+            row.grid(row=row_index + 1, column=0, sticky="ew")
             cells = []
-            for width in (6, 8, 14, 8, 9, 8, 6):
+            for index, (_text, width) in enumerate(self._event_columns):
                 cell = tk.Label(
-                    row, text="", width=width, anchor="w", bg=PANEL, fg=VALUE,
+                    row, text="", width=width or 1, anchor="w", bg=PANEL, fg=VALUE,
                     font=(FONTS["mono"], 9),
                 )
-                cell.pack(side="left")
+                cell.grid(row=0, column=index, sticky="ew", padx=(0, 8))
+                row.grid_columnconfigure(index, weight=1 if width == 0 else 0)
                 cells.append(cell)
-            state = Flag(tk, row, width=11)
-            state.label.pack(side="left")
-            cells.append(state.label)
+            body.grid_columnconfigure(0, weight=1)
             self._event_cells.append(cells)
 
     # -- axes are built from what the model was actually asked ---------------
@@ -1246,7 +1275,8 @@ class Dashboard:
                     (value for value in decision.confidence.values() if value is not None),
                     default=None,
                 ),
-                "events": len(decision.assistance_events),
+                "ms": float(decision.decision_ms or 0.0),
+                "guard": _guard_motive(decision.assistance_events),
             }
         )
         self._history_sig = None
@@ -1282,7 +1312,7 @@ class Dashboard:
                 continue
             item = items[index]
             confidence = item["confidence"]
-            word, level = _confidence_level(confidence)
+            _word, level = _confidence_level(confidence)
             values = (
                 f"#{item['n']:04d}",
                 str(item["tick"]),
@@ -1291,15 +1321,20 @@ class Dashboard:
                 item["interaction"],
                 item["target"] or "—",
                 f"{confidence:.2f}" if confidence is not None else "—",
+                f"{item['ms']:.0f}",
             )
-            for cell, value in zip(cells[:7], values):
+            for cell, value in zip(cells[:8], values):
                 cell.configure(text=value)
             cells[6].configure(fg={"warn": WARN, "alarm": ALARM}.get(level, VALUE))
-            state = cells[7]
-            if item["events"]:
-                state.configure(text=f"INTERVINO ×{item['events']}", fg=BG, bg=WARN)
+            state = cells[8]
+            if item["guard"]:
+                state.configure(text="INTERVINO", fg=BG, bg=WARN)
             else:
                 state.configure(text="APLICADO", fg=STATIC, bg=PANEL)
+            cells[9].configure(
+                text=item["guard"] or "sin intervención, aplicado tal cual",
+                fg=STATIC if item["guard"] else OFF,
+            )
 
     # -- request and response, always visible --------------------------------
     def _update_request(self, decision):
