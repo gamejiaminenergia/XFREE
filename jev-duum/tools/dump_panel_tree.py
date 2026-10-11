@@ -38,6 +38,7 @@ from jev_duum.controller import JevDuumController  # noqa: E402
 from jev_duum.fake import FakeJevClient  # noqa: E402
 from jev_duum.integration import default_duum_checkout, load_duum  # noqa: E402
 from jev_duum.panel import Dashboard  # noqa: E402
+from jev_duum.scheduler import FixedClock  # noqa: E402
 from jev_duum.snapshot import SnapshotBuilder  # noqa: E402
 from jev_duum.types import DuumControls  # noqa: E402
 from jev_duum.wad import default_wad_path, resolve_wad  # noqa: E402
@@ -106,7 +107,10 @@ def main(argv=None) -> int:
     except Exception as error:  # integration errors are already descriptive
         parser.error(str(error))
 
-    modules.desktop.use_clock(None)
+    # A fixed 60 Hz clock, advanced one tick per frame: with the wall clock the
+    # banner's `T+ x.xs` changed between runs and the gate was not reproducible.
+    clock = FixedClock()
+    modules.desktop.use_clock(clock)
     modules.desktop.set_keys(0)
     modules.desktop.mount(str(wad.path))
     app = modules.engine.Duum()
@@ -118,7 +122,9 @@ def main(argv=None) -> int:
         parser.error(f"Duum could not start: {app.err}")
     if app.level != args.map_name:
         app.load_level(args.map_name)
+    app.last_ticks = clock.tick
     for _ in range(3):
+        clock.advance(1)
         window._frame_once()
 
     controller = JevDuumController(

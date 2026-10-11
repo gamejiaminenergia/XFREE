@@ -81,6 +81,18 @@ def reschedule(now: float, decision_rate: float, *, previous: float) -> float:
     return following
 
 
+def stale_after(*, accepted: bool, stale: int) -> int:
+    """Update the staleness counter for one finished decision.
+
+    A fresh result resets it.  It reports how healthy the link is *now* — the
+    number of consecutive results that were unusable — not how many slow calls
+    the session has ever had; a counter that only grows would leave the screen
+    shouting "stale" for the rest of the run after four slow answers.
+    """
+
+    return 0 if accepted else int(stale) + 1
+
+
 def observe_intermission(
     *, finished: bool, since: float | None, now: float, grace: float = LEVEL_GRACE_SECONDS
 ) -> tuple[float | None, bool, bool]:

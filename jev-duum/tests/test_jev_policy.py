@@ -93,6 +93,14 @@ def test_a_running_level_clears_the_intermission_marker():
     )
 
 
+def test_a_fresh_result_clears_the_staleness_counter():
+    """It reports the link's health now, not how many slow calls ever happened."""
+
+    assert policy.stale_after(accepted=False, stale=0) == 1
+    assert policy.stale_after(accepted=False, stale=3) == 4
+    assert policy.stale_after(accepted=True, stale=4) == 0
+
+
 def test_the_screen_refreshes_on_its_cadence_and_always_while_blind():
     assert policy.should_refresh(tick=4, latest="decision", model_error=None)
     assert not policy.should_refresh(tick=5, latest="decision", model_error=None)

@@ -78,11 +78,23 @@ def test_the_wire_format_rebuilds_a_frame_every_box_can_render():
         assert _text(box).strip(), box
 
 
+def test_the_game_view_keeps_the_engine_aspect_ratio():
+    """A cell is two pixels tall, so the fitted grid is not just the free box."""
+
+    # A 320x200 source: 1.6 wide per unit. Fitting by rows first.
+    assert render.fitted_cells(320, 200, 40, 12) == (38, 12)
+    # Narrow box: the columns limit, and the rows shrink to match.
+    assert render.fitted_cells(320, 200, 20, 12) == (20, 6)
+    # Degenerate boxes draw nothing rather than something wrong.
+    assert render.fitted_cells(320, 200, 1, 12) == (0, 0)
+    assert render.fitted_cells(0, 200, 40, 12) == (0, 0)
+
+
 def test_the_frame_size_comes_from_the_wire_not_from_a_runtime():
     frame = frame_from_state(STATE)
     art = render.game_art(bytes([7] * (4 * 2 * 3)), 4, 2, 4, 2,
                           __import__("jev_duum.tui.colors", fromlist=["basic"]).basic)
-    assert len(art) == 2 and len(art[0]) == 4
+    assert len(art) == 1 and len(art[0]) == 4  # 4x2 pixels in a 4x2 cell box: one row
     assert frame.rgb is None  # no pixels requested
 
 

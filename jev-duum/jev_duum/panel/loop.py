@@ -90,12 +90,14 @@ def run_jev_window(
             controls = DuumControls()
             result = None
         if result is not None:
-            if policy.accept_result(
+            accepted = policy.accept_result(
                 tick=tick,
                 observation_tick=result.observation_tick,
                 minimum_observation_tick=minimum_observation_tick,
                 max_stale_ticks=max_stale_ticks,
-            ):
+            )
+            stale = policy.stale_after(accepted=accepted, stale=stale)
+            if accepted:
                 latest = result.with_application_tick(tick + 1)
                 controls = latest.applied_controls
                 applied_decisions += 1

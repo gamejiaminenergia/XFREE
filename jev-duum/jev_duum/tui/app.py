@@ -139,8 +139,12 @@ class TuiApp:
             return 0
         source_w, source_h = self.session.frame_size()
         art = render.game_art(frame.rgb, source_w, source_h, width, rows, colors.basic)
+        if not art:
+            return 0
+        # Centre what came back: the grid is fitted to the engine's aspect.
+        indent = max(0, (width - len(art[0])) // 2)
         for index, cells in enumerate(art):
-            at = column
+            at = column + indent
             for fg, bg, char in cells:
                 if at >= column + width:
                     break

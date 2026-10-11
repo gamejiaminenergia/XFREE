@@ -144,12 +144,14 @@ class Session:
             return
         if result is None:
             return
-        if policy.accept_result(
+        accepted = policy.accept_result(
             tick=self.tick,
             observation_tick=result.observation_tick,
             minimum_observation_tick=self.minimum_observation_tick,
             max_stale_ticks=self.max_stale_ticks,
-        ):
+        )
+        self.stale = policy.stale_after(accepted=accepted, stale=self.stale)
+        if accepted:
             self.latest = result.with_application_tick(self.tick + 1)
             self.controls = self.latest.applied_controls
             self.applied += 1
@@ -157,8 +159,6 @@ class Session:
                 self.builder.note_hunt_target(self.latest.hunt.get("target_id"))
             if self.on_decision:
                 self.on_decision(self.latest)
-        else:
-            self.stale += 1
 
     def _advance_engine(self) -> None:
         want_frame = self.pixels and (self.tick % self.frame_every == 0)

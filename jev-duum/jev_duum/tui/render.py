@@ -281,14 +281,34 @@ def balance(model, width: int) -> list[Line]:
 
 
 # ── the game view ────────────────────────────────────────────────────────────
-def game_art(rgb, src_w: int, src_h: int, cols: int, rows: int, basic) -> list[list[tuple[int, int, str]]]:
-    """Two engine pixels per cell, painted as upper half blocks.
+def fitted_cells(src_w: int, src_h: int, cols: int, rows: int) -> tuple[int, int]:
+    """The largest cell box inside ``cols x rows`` that keeps the source aspect.
 
-    ``basic(r, g, b)`` quantises a pixel to one of the eight basic colours, which
-    keeps the terminal colour pairs bounded (8x8) on any terminal.
+    A cell carries two pixels stacked vertically, so a box of ``Wc x Rc`` cells
+    shows ``Wc x 2*Rc`` pixels.  Stretching the engine's 320x200 into whatever
+    space is free turns the map into noise; fitting it keeps it recognisable.
     """
 
-    if not rgb or cols < 4 or rows < 2:
+    if src_w <= 0 or src_h <= 0 or cols < 2 or rows < 1:
+        return 0, 0
+    wide = 2 * rows * src_w / src_h
+    if wide <= cols:
+        return max(2, int(wide)), int(rows)
+    tall = cols * src_h / (2 * src_w)
+    return int(cols), max(1, int(tall))
+
+
+def game_art(rgb, src_w: int, src_h: int, cols: int, rows: int, basic):
+    """Two engine pixels per cell, painted as upper half blocks.
+
+    The grid is fitted to the source aspect ratio first (see ``fitted_cells``),
+    so the caller can centre what comes back.  ``basic(r, g, b)`` quantises a
+    pixel to one of the eight basic colours, which keeps the terminal colour
+    pairs bounded (8x8) on any terminal.
+    """
+
+    cols, rows = fitted_cells(src_w, src_h, cols, rows)
+    if not rgb or cols < 2 or rows < 1:
         return []
     art = []
     for row in range(rows):
