@@ -103,6 +103,14 @@ def make_parser() -> argparse.ArgumentParser:
         help="Start in a normal window instead of filling the screen (F11 toggles).",
     )
     parser.add_argument(
+        "--tui",
+        action="store_true",
+        help=(
+            "Draw the panel in the terminal instead of a window: headless engine, "
+            "no X, works over SSH. [q] quits, [p] pauses, [+/-] sets the rate."
+        ),
+    )
+    parser.add_argument(
         "--log-calls",
         action="store_true",
         help=(
@@ -144,6 +152,13 @@ def _validate(parser, args):
         parser.error("exact recording currently requires synchronous --headless mode")
     if args.record_snapshots and not args.record:
         parser.error("--record-snapshots requires --record")
+    if args.tui:
+        if args.headless:
+            parser.error("--tui draws in the terminal, so it cannot be combined with --headless")
+        if args.replay:
+            parser.error("--tui drives a live session; it cannot be combined with --replay")
+        if args.pilot not in ("jev", "jev-assisted"):
+            parser.error("--tui needs a model pilot: --pilot jev or --pilot jev-assisted")
 
 
 def _controller(parser, args):
@@ -175,9 +190,9 @@ def play(argv=None) -> int:
     args = parser.parse_args(argv)
     _validate(parser, args)
     width, height = _dimensions(parser, args.size)
-    needs_window = args.pilot == "manual" or (
+    needs_window = (args.pilot == "manual" or (
         args.pilot in ("jev", "jev-assisted") and not args.headless
-    )
+    )) and not args.tui
     try:
         wad = resolve_wad(args.wad)
         modules = load_duum(args.duum_path, frontend=needs_window)
@@ -238,6 +253,28 @@ def play(argv=None) -> int:
                 "finished": app.finish is not None,
             },
         }
+    elif controller is not None and args.tui:
+        from .tui.app import run_tui
+
+        try:
+            summary = run_tui(
+                modules,
+                wad.path,
+                controller,
+                map_name=args.map_name,
+                width=width,
+                height=height,
+                decision_rate=args.decision_rate,
+                max_stale_ticks=args.max_stale_ticks,
+            )
+        except RuntimeError as error:
+            parser.error(str(error))
+        summary.update(
+            duum={"commit": modules.commit, "source": modules.source},
+            wad=wad.to_dict(),
+            map=args.map_name,
+            model=controller.metadata,
+        )
     elif controller is not None and not args.headless:
         try:
             summary = run_jev_window(

@@ -16,7 +16,7 @@ FLAGS = (
     "--prompt-version", "--decision-rate", "--max-stale-ticks", "--seed",
     "--headless", "--ticks", "--checkpoint-every", "--record",
     "--record-snapshots", "--no-world-model", "--mission", "--damage-log",
-    "--replay", "--windowed", "--log-calls", "--size", "--scale",
+    "--replay", "--windowed", "--tui", "--log-calls", "--size", "--scale",
 )
 
 
