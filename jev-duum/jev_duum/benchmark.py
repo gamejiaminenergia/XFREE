@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import statistics
 import time
-from dataclasses import replace
 
 from .actions import controls_to_mask, ensure_usable_weapon, settle_assisted_controls
 from .autopsy import DamageLog
@@ -12,6 +11,7 @@ from .integration import DuumRuntime
 from .pilots import HunterPilot, RandomPilot, heuristic_controls, scripted_controls
 from .prompts import DEFAULT_PROMPT_VERSION
 from .scheduler import FractionalScheduler
+from .session import policy
 from .snapshot import SnapshotBuilder
 from .types import DuumControls
 
@@ -115,8 +115,7 @@ def run_headless(
             elif pilot == "hunter":
                 controls = hunter_pilot.reflex(snapshot)
             # Use is a semantic one-shot. Release it after its application tick.
-            if controls.interaction == "use":
-                controls = replace(controls, interaction="neither")
+            controls = policy.release_one_shot(controls)
             if recorder and controls != previous_controls:
                 recorder.controls(runtime.ticks + 1, controls, controls_to_mask(controls))
             if snapshot.episode.dead or snapshot.episode.finished:

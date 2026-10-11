@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import statistics
 import time
-from dataclasses import replace
 
 from ..actions import (
     controls_to_mask,
     ensure_usable_weapon,
     settle_assisted_controls,
 )
+from ..session import policy
 from ..snapshot import SnapshotBuilder
 from ..types import DuumControls
 from ..worker import DecisionWorker
@@ -90,8 +90,12 @@ def run_jev_window(
             controls = DuumControls()
             result = None
         if result is not None:
-            age = tick - result.observation_tick
-            if age <= max_stale_ticks and result.observation_tick >= minimum_observation_tick:
+            if policy.accept_result(
+                tick=tick,
+                observation_tick=result.observation_tick,
+                minimum_observation_tick=minimum_observation_tick,
+                max_stale_ticks=max_stale_ticks,
+            ):
                 latest = result.with_application_tick(tick + 1)
                 controls = latest.applied_controls
                 applied_decisions += 1
@@ -112,35 +116,35 @@ def run_jev_window(
         latest_snapshot = builder.build(tick)
         if controller.assisted:
             controls = settle_assisted_controls(controls, latest_snapshot)
-        if controls.interaction == "use":
-            controls = replace(controls, interaction="neither")
-        if latest_snapshot.episode.finished:
-            if finish_since is None:
-                finish_since = time.perf_counter()
-                controls = DuumControls()
-            elif time.perf_counter() - finish_since >= 1.0:
-                if advance_completed_level(app):
-                    controls = DuumControls()
-                    builder = SnapshotBuilder(app, modules.engine)
-                    latest_snapshot = builder.build(tick)
-                    latest = None
-                    finish_since = None
-                    minimum_observation_tick = tick
-                    next_decision_time = app.now
-        else:
+        controls = policy.release_one_shot(controls)
+        finish_since, just_finished, advance_due = policy.observe_intermission(
+            finished=latest_snapshot.episode.finished,
+            since=finish_since,
+            now=time.perf_counter(),
+        )
+        if just_finished:
+            controls = DuumControls()
+        elif advance_due and advance_completed_level(app):
+            controls = DuumControls()
+            builder = SnapshotBuilder(app, modules.engine)
+            latest_snapshot = builder.build(tick)
+            latest = None
             finish_since = None
-        if (
-            model_error is None
-            and not latest_snapshot.episode.dead
-            and not latest_snapshot.episode.finished
-            and app.menu is None
-            and app.now + 1e-9 >= next_decision_time
+            minimum_observation_tick = tick
+            next_decision_time = app.now
+        if policy.ready_to_submit(
+            now=app.now,
+            next_decision_time=next_decision_time,
+            model_error=model_error,
+            dead=latest_snapshot.episode.dead,
+            finished=latest_snapshot.episode.finished,
+            menu_open=app.menu is not None,
         ):
             worker.submit(latest_snapshot)
-            next_decision_time += 1.0 / decision_rate
-            if next_decision_time < app.now:
-                next_decision_time = app.now + 1.0 / decision_rate
-        if tick % 4 == 0 or latest is None or model_error:
+            next_decision_time = policy.reschedule(
+                app.now, decision_rate, previous=next_decision_time
+            )
+        if policy.should_refresh(tick=tick, latest=latest, model_error=model_error):
             panel.update(
                 pilot=pilot,
                 snapshot=latest_snapshot,
