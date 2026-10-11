@@ -130,6 +130,14 @@ class MiniMap:
     # -- rendering -----------------------------------------------------------
     def render(self, snapshot, readout, *, aim_assisted: bool = False) -> None:
         self._last = (snapshot, readout, bool(aim_assisted))
+        # Re-sync with the canvas's current size on every draw, not only on a
+        # ``<Configure>``.  A Configure that fires while Tk still reports the old
+        # geometry (or one that never fires, e.g. a reparent) left the diagram
+        # projected for a box it no longer had, and nothing redrew it until the
+        # next resize: the map looked frozen while the rest of the panel kept
+        # updating.  Same size in, same projection out, so the steady state is
+        # unchanged.
+        self._recompute_projection()
         canvas = self.canvas
         canvas.delete("all")
         try:

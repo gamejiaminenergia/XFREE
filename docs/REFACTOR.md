@@ -138,3 +138,27 @@ legítimamente en unos píxeles. Úsense para revisar, no para comparar.
 
 Cada fase es un commit aislado (8 commits, más el de fase 7b). `git revert <sha>`
 de la fase a deshacer. No hay estado persistente ni migraciones.
+
+## Arreglo posterior: el diagrama podía quedarse proyectado a un tamaño viejo
+
+Síntoma observado una vez jugando con Jev real: el resto del panel seguía
+refrescándose pero el diagrama se quedaba quieto.
+
+El bucle no puede ser la causa: `panel.update` no está dentro de un `try` y el
+`after(1, frame)` va después, así que una excepción habría congelado también el
+juego. Lo que quedaba atrás era la **proyección del minimapa**: `MiniMap.fit`
+solo se ejecuta cuando Tk reporta un tamaño distinto, y reproyecta releyendo
+`winfo_width()`. Si un `<Configure>` llega mientras Tk todavía reporta la
+geometría vieja, el mapa queda dibujado para una caja que ya no tiene y nada lo
+redibuja hasta el siguiente redimensionado.
+
+Arreglo: `MiniMap.render` re-sincroniza la proyección con el tamaño real del
+canvas en cada dibujo. A igual tamaño, igual proyección, así que el estado
+estacionario no cambia (verificado: 240 ticks de dinámica idénticos y árbol de
+widgets byte-idéntico); solo se autocorrige el caso malo. Lo encierra
+`tests/test_jev_overlays.py::test_every_render_resyncs_the_projection_with_the_canvas`,
+que falla sin el arreglo.
+
+No es una reproducción: el fallo original no se pudo reproducir, así que el
+arreglo ataca el único mecanismo que encaja, no un caso confirmado.
+
