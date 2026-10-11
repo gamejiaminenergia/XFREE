@@ -17,6 +17,7 @@ dev = ["pytest>=8", "ruff>=0.12", "build>=1"]
 [project.scripts]
 jev-duum = "jev_duum.cli:main"
 jev-duum-eval = "jev_duum.evaluation:main"
+jev-duum-prompt-eval = "jev_duum.prompt_eval:main"
 
 [tool.uv.sources]
 duum = { path = "../duum", editable = true }
@@ -38,6 +39,9 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
+# `_map/` is vendored verbatim from `map/` (the source of truth); only its
+# imports were made package-relative, so it keeps the original style as-is.
+extend-exclude = ["jev_duum/_map"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]

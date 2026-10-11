@@ -12,6 +12,7 @@ import pytest
 
 from jev_duum.controller import JevDuumController
 from jev_duum.integration import DuumRuntime, load_duum
+from jev_duum.prompts import PROMPT_VERSIONS
 from jev_duum.snapshot import SnapshotBuilder
 from jev_duum.types import AIMS, INTERACTIONS, MOVEMENTS
 
@@ -42,14 +43,18 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_live_decision_returns_valid_probabilities():
+@pytest.mark.parametrize("version", PROMPT_VERSIONS)
+def test_live_decision_returns_valid_probabilities(version):
     modules = load_duum(DUUM_ROOT)
     with DuumRuntime(modules, WAD, "E1M1", 96, 64) as runtime:
         state = SnapshotBuilder(runtime.app, modules.engine).build(0)
-    controller = JevDuumController(model=os.environ.get("TYPESAFE_MODEL", "jev-latest"))
+    controller = JevDuumController(
+        model=os.environ.get("TYPESAFE_MODEL", "jev-latest"), prompt_version=version
+    )
     result = controller.decide(state)
     assert result.prediction_calls == 1
     assert result.model_id.startswith("jev")
+    assert result.prompt_version == version
     assert set(result.probabilities) == {"movement", "aim", "interaction"}
     for name, labels in (
         ("movement", MOVEMENTS),
@@ -57,6 +62,8 @@ def test_live_decision_returns_valid_probabilities():
         ("interaction", INTERACTIONS),
     ):
         assert set(result.probabilities[name]) == set(labels)
-        assert sum(result.probabilities[name].values()) == pytest.approx(1.0, abs=0.002)
+        # Jev rounds each probability to two decimals, so a five-option
+        # question can legitimately sum to 0.99 or 1.01.
+        assert sum(result.probabilities[name].values()) == pytest.approx(1.0, abs=0.05)
     assert result.input_tokens["request"] > 0
     assert result.cost_usd > 0

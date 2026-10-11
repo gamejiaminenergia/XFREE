@@ -9,6 +9,7 @@ from dataclasses import replace
 from .actions import controls_to_mask, ensure_usable_weapon, settle_assisted_controls
 from .integration import DuumRuntime
 from .pilots import RandomPilot, heuristic_controls, scripted_controls
+from .prompts import DEFAULT_PROMPT_VERSION
 from .scheduler import FractionalScheduler
 from .snapshot import SnapshotBuilder
 from .types import DuumControls
@@ -53,6 +54,7 @@ def run_headless(
         snapshot = builder.build(0)
         for index in range(ticks):
             if scheduler.due():
+                recorded = None
                 if pilot in ("jev-raw", "jev-assisted"):
                     decision = controller.decide(snapshot).with_application_tick(runtime.ticks + 1)
                     controls = decision.applied_controls
@@ -61,8 +63,7 @@ def run_headless(
                     decision_ms.append(decision.decision_ms)
                     cost_usd += decision.cost_usd
                     assistance += len(decision.assistance_events)
-                    if recorder:
-                        recorder.decision(decision)
+                    recorded = decision
                 elif pilot == "heuristic":
                     controls = heuristic_controls(snapshot)
                     decision_count += 1
@@ -75,6 +76,10 @@ def run_headless(
                 else:
                     raise ValueError(f"Unsupported headless pilot: {pilot}")
                 if recorder:
+                    if recorded is not None:
+                        recorder.decision(recorded, snapshot)
+                    else:
+                        recorder.capture(snapshot, DEFAULT_PROMPT_VERSION)
                     recorder.controls(runtime.ticks + 1, controls, controls_to_mask(controls))
             builder.note_controls(controls)
             if pilot == "jev-assisted":

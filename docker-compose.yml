@@ -1,0 +1,54 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: jev-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-jev}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-jevpass}
+      MONGO_INITDB_DATABASE: jevlog
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "-u", "${MONGO_USER:-jev}", "-p", "${MONGO_PASS:-jevpass}", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  api:
+    build: ./jev-log
+    container_name: jev-log-api
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      MONGO_URL: mongodb://${MONGO_USER:-jev}:${MONGO_PASS:-jevpass}@mongodb:27017/jevlog?authSource=admin
+      PORT: 3000
+
+  # Interfaz WEB para inspeccionar MongoDB desde el navegador
+  # (equivalente web de MongoDB Compass, que es una app de escritorio)
+  mongo-express:
+    image: mongo-express:1.0.2-20
+    container_name: jev-mongo-express
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER:-jev}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASS:-jevpass}
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER:-jev}:${MONGO_PASS:-jevpass}@mongodb:27017/jevlog?authSource=admin
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+      ME_CONFIG_SITE_BASEURL: /
+
+volumes:
+  mongo_data:

@@ -22,6 +22,11 @@ import time
 import urllib.error
 import urllib.request
 
+try:  # Mongo logging is optional: a missing API must never break a decision.
+    from .jev_log import JevCallLogger
+except Exception:  # pragma: no cover - defensive import
+    JevCallLogger = None
+
 DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 DEFAULT_MODELS_URL = "https://api.typesafe.ai/v1/models"
 DEFAULT_MODEL = "jev-latest"
@@ -76,9 +81,22 @@ class JevClient:
         self._opener = opener or urllib.request.urlopen
         self.calls = 0
         self.input_tokens = 0
+        self.log_context: dict = {}
+        # A custom opener means a test double or an offline probe: never let
+        # those calls pollute the audit database.
+        self.logger = (
+            JevCallLogger() if JevCallLogger is not None and opener is None else None
+        )
 
     # -- public surface ------------------------------------------------------
-    def ask(self, state, questions, *, model: str | None = None) -> dict:
+    def ask(
+        self,
+        state,
+        questions,
+        *,
+        model: str | None = None,
+        context: dict | None = None,
+    ) -> dict:
         """Ask every question against one shared ``state`` in a single request."""
 
         if not isinstance(questions, dict) or not questions:
@@ -88,7 +106,9 @@ class JevClient:
             "model": model or self.model,
             "questions": questions,
         }
+        started = time.perf_counter()
         response = self._send("POST", self.endpoint, payload)
+        latency_ms = (time.perf_counter() - started) * 1000
         usage = response.get("usage") or {}
         try:
             tokens = int(usage.get("input_tokens") or 0)
@@ -96,7 +116,53 @@ class JevClient:
             tokens = 0
         self.calls += 1
         self.input_tokens += tokens
+        self._log(state, questions, payload["model"], response, tokens, latency_ms, context)
         return response
+
+    # -- audit log -----------------------------------------------------------
+    def _log(self, state, questions, model, response, tokens, latency_ms, context):
+        """Send the request and its raw response to the jev-log Mongo API."""
+
+        if self.logger is None:
+            return
+        merged = {**self.log_context, **(context or {})}
+        probabilities = {}
+        confidence = {}
+        for name, answer in (response.get("answers") or {}).items():
+            if isinstance(answer, dict):
+                if isinstance(answer.get("probabilities"), dict):
+                    probabilities[name] = answer["probabilities"]
+                if answer.get("confidence") is not None:
+                    confidence[name] = answer.get("confidence")
+        tick = merged.get("tick")
+        if tick is None and isinstance(state, dict):
+            tick = state.get("tick")
+        self.logger.log(
+            {
+                "tick": tick,
+                "request": {
+                    "model": model,
+                    "pilot": merged.get("pilot"),
+                    "prompt_version": merged.get("prompt_version"),
+                    "state": state,
+                    "questions": questions,
+                },
+                "response": {
+                    "probabilities": probabilities or None,
+                    "confidence": confidence or None,
+                    "input_tokens": tokens,
+                    "cost_usd": input_cost_usd(tokens),
+                    "latency_ms": round(latency_ms, 2),
+                    "model_id": response.get("model"),
+                    "raw": response,
+                },
+                "metadata": {
+                    "stage": merged.get("stage", "request"),
+                    "strategy": merged.get("strategy"),
+                    "logger_stats": dict(self.logger.stats),
+                },
+            }
+        )
 
     def models(self) -> list:
         response = self._send("GET", self.models_url, None)
@@ -121,6 +187,13 @@ class JevClient:
                 self._sleep(attempt, error.headers.get("retry-after"))
             except urllib.error.URLError as error:
                 last_error = JevError(f"Jev transport failure: {error.reason}")
+                if attempt == self.retries - 1:
+                    raise last_error from None
+                self._sleep(attempt)
+            except OSError as error:
+                # A dropped connection (ConnectionResetError, RemoteDisconnected)
+                # can surface unwrapped; it is still a retryable transport fault.
+                last_error = JevError(f"Jev transport failure: {error}")
                 if attempt == self.retries - 1:
                     raise last_error from None
                 self._sleep(attempt)

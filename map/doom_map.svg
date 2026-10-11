@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="750" viewBox="0 0 1000 750">
+  <defs>
+    <!-- Grilla del automapa -->
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M20 0 L0 0 0 20" fill="none" stroke="#0a2a0a" stroke-width="1"/>
+    </pattern>
+    <pattern id="gridbold" width="100" height="100" patternUnits="userSpaceOnUse">
+      <path d="M100 0 L0 0 0 100" fill="none" stroke="#0d3d0d" stroke-width="1.5"/>
+    </pattern>
+    <!-- Nukage animado -->
+    <radialGradient id="nukageGlow" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#444400" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#111100" stop-opacity="0.6"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Fondo negro con vignette -->
+  <rect width="1000" height="750" fill="#000000"/>
+  <rect x="20" y="20" width="960" height="690" fill="url(#grid)"/>
+  <rect x="20" y="20" width="960" height="690" fill="url(#gridbold)"/>
+  <rect x="20" y="20" width="960" height="690" fill="none" stroke="#1d4d1d" stroke-width="2"/>
+
+  <!-- ===================== MUROS EXTERIORES (doble línea, estilo automapa) ===================== -->
+  <g fill="none" stroke="#109010" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <!-- SALA DE INICIO: estructura con nichos -->
+    <path d="M70 110 h210 v30 h-25 v35 h25 v60 h-210 z"/>
+    <!-- Muros internos sala inicio: pilares -->
+    <path d="M105 145 h30 M190 145 h30 M105 200 h45"/>
+    <!-- PASILLO ZIGZAG hacia el este -->
+    <path d="M280 140 h60 v-15 h55 v70 M280 170 h50 v20 h45"/>
+    <path d="M395 125 h30 v-20 h95 v55 h-30"/>
+    <path d="M395 165 h30 v35 h30"/>
+    <!-- PATIO EXTERIOR (zona al aire libre con muro bajo) -->
+    <path d="M520 105 h130 v25 c-15 12 -15 45 0 60 v10 l-20 5 M520 105 v130 q35 10 62 15"/>
+    <!-- Detalles patio: plataforma central -->
+    <path d="M555 155 h55 v45 h-55 z"/>
+    <path d="M567 167 h31 M567 180 h31 M567 193 h31"/>
+    <!-- PASILLO zigzag sur -->
+    <path d="M582 215 v25 h-40 v30 h-15 M520 235 v40"/>
+    <path d="M485 270 v45 M445 300 h40 M425 345 l20 -30"/>
+    <!-- SALA OESTE AMPERIOMETRO (zigzag largo con escales) -->
+    <path d="M360 345 h-45 v25 h-70 v-60 h-40 v-25"/>
+    <path d="M280 322 v30 M245 310 v55"/>
+    <!-- Nicho de armadura azul -->
+    <path d="M205 335 h-45 v45 h45 z" stroke-dasharray="6 4"/>
+    <!-- SALA SUR GRANDE -->
+    <path d="M360 345 h130 v-15 h75 v20 h40 v25"/>
+    <path d="M415 395 h130 M415 395 v85 M545 395 v50"/>
+    <!-- Nichos internos sala sur -->
+    <path d="M430 440 h40 M430 440 v30 M470 440 v30"/>
+    <path d="M480 450 h40 v40 M490 460 h20"/>
+    <!-- SALA EXIT al sur-este -->
+    <path d="M560 445 h95 v65 h-95 z M585 470 h45 M585 512 h45"/>
+    <!-- Pasillito a EXIT -->
+    <path d="M655 465 h30 v-40 M685 425 h45 v45"/>
+    <!-- SALA SECRETA (amarilla punteada) -->
+    <path d="M730 425 h70 v80 h-70 z" stroke-dasharray="7 5" stroke="#c9b400"/>
+    <path d="M745 445 h40 M770 445 v50"/>
+    <!-- CORREDOR ESTE hacia secret -->
+    <path d="M650 105 h150 v95 h-55 M745 200 h55"/>
+    <!-- Sala este con columnas (computadoras) -->
+    <path d="M650 200 h95 v85 h-95 z M675 230 h45 M675 255 h45 M697 230 v25"/>
+  </g>
+
+  <!-- ===================== MUROS INTERNOS (linea mas delgada) ===================== -->
+  <g fill="none" stroke="#0e7a0e" stroke-width="1.6">
+    <path d="M480 125 h40 M480 160 v40 M395 215 h55 M580 290 h50 M520 320 h-60"/>
+    <path d="M290 240 v40 M300 260 h30 M330 280 v45"/>
+    <path d="M700 420 h-20 M700 420 v20"/>
+  </g>
+
+  <!-- ===================== PUERTAS (azul con marco) ===================== -->
+  <g stroke="#3333ff" stroke-width="6">
+    <line x1="300" y1="147" x2="300" y2="168"/>
+    <line x1="520" y1="128" x2="520" y2="158"/>
+    <line x1="432" y1="300" x2="462" y2="300"/>
+    <line x1="486" y1="230" x2="486" y2="255"/>
+    <line x1="650" y1="180" x2="650" y2="195"/>
+  </g>
+  <!-- Marcos de puerta -->
+  <g stroke="#888888" stroke-width="1.4">
+    <line x1="292" y1="143" x2="308" y2="143"/>
+    <line x1="292" y1="172" x2="308" y2="172"/>
+    <line x1="512" y1="124" x2="528" y2="124"/>
+    <line x1="512" y1="162" x2="528" y2="162"/>
+  </g>
+
+  <!-- ===================== PUERTA DE SALIDA (doble roja + switch) ===================== -->
+  <g stroke="#ff1111" stroke-width="4">
+    <line x1="675" y1="512" x2="695" y2="512"/>
+    <line x1="675" y1="517" x2="695" y2="517"/>
+  </g>
+  <rect x="678" y="522" width="14" height="10" fill="#551111" stroke="#ff1111" stroke-width="2"/>
+
+  <!-- ===================== FOSOS DE NUKAGE (lava verde ambulante) ===================== -->
+  <ellipse cx="582" cy="180" rx="55" ry="32" fill="url(#nukageGlow)"/>
+  <g fill="none" stroke="#7a8f00" stroke-width="1.4" opacity="0.85">
+    <path d="M535 175 q8 -8 16 0 t16 0 t16 0 t16 0 t16 0"/>
+    <path d="M535 188 q8 -8 16 0 t16 0 t16 0 t16 0 t16 0"/>
+    <path d="M545 200 q8 -8 16 0 t16 0 t16 0 t16 0"/>
+    <path d="M560 162 q8 -8 16 0 t16 0 t16 0"/>
+  </g>
+  <!-- Burbujas -->
+  <g fill="#a0bb00" opacity="0.7">
+    <circle cx="560" cy="170" r="2.5"><animate attributeName="opacity" values="0.2;0.9;0.2" dur="2s" repeatCount="indefinite"/></circle>
+    <circle cx="600" cy="195" r="2"><animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.6s" repeatCount="indefinite"/></circle>
+    <circle cx="585" cy="160" r="2"><animate attributeName="opacity" values="0.5;1;0.5" dur="1.2s" repeatCount="indefinite"/></circle>
+  </g>
+  <!-- Nukage pequeño en patio norte -->
+  <ellipse cx="480" cy="140" rx="28" ry="16" fill="url(#nukageGlow)"/>
+  <path d="M455 140 q6 -6 12 0 t12 0 t12 0" fill="none" stroke="#7a8f00" stroke-width="1.2" opacity="0.8"/>
+
+  <!-- ===================== AGUA (piscina azul oscuro, west) ===================== -->
+  <ellipse cx="300" cy="278" rx="32" ry="20" fill="#001a40" opacity="0.9"/>
+  <path d="M272 275 q7 -5 14 0 t14 0 t14 0 t14 0" fill="none" stroke="#1a5f9e" stroke-width="1.2" opacity="0.8"/>
+
+  <!-- ===================== TELEPORTER (morado) ===================== -->
+  <g>
+    <rect x="240" y="345" width="40" height="40" fill="none" stroke="#bb44ff" stroke-width="2" stroke-dasharray="4 3"/>
+    <circle cx="260" cy="365" r="10" fill="none" stroke="#dd88ff" stroke-width="2"/>
+    <circle cx="260" cy="365" r="5" fill="#dd88ff" opacity="0.5">
+      <animate attributeName="r" values="4;7;4" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- ===================== ESCALERAS (lineas escalonadas) ===================== -->
+  <g stroke="#c9b400" stroke-width="1.6" fill="none">
+    <path d="M435 275 h10 v8 h10 v8 h10 v8 h10"/>
+    <path d="M320 335 l12 6 12 6 12 6"/>
+  </g>
+
+  <!-- ===================== COLUMNAS / PILARES ===================== -->
+  <g fill="none" stroke="#0e9a0e" stroke-width="2">
+    <rect x="430" y="140" width="16" height="16"/>
+    <rect x="470" y="180" width="16" height="16"/>
+    <rect x="360" y="170" width="14" height="14"/>
+    <rect x="620" y="420" width="14" height="14"/>
+    <rect x="675" y="425" width="14" height="14"/>
+  </g>
+
+  <!-- ===================== ENEMIGOS (calacas rojas como el automap) ===================== -->
+  <g fill="#ff2a2a" stroke="#770000" stroke-width="1">
+    <!-- sala inicio -->
+    <circle cx="120" cy="140" r="7"/>
+    <circle cx="185" cy="185" r="7"/>
+    <!-- zigzag -->
+    <circle cx="330" cy="150" r="6"/>
+    <circle cx="392" cy="190" r="6"/>
+    <!-- patio -->
+    <circle cx="498" cy="132" r="5"/>
+    <circle cx="540" cy="210" r="6"/>
+    <circle cx="605" cy="120" r="7"/>
+    <!-- sala oeste -->
+    <circle cx="280" cy="360" r="7"/>
+    <circle cx="230" cy="352" r="6"/>
+    <!-- sala sur -->
+    <circle cx="435" cy="380" r="7"/>
+    <circle cx="505" cy="430" r="7"/>
+    <circle cx="460" cy="465" r="6"/>
+    <!-- exit corridor -->
+    <circle cx="620" cy="480" r="7"/>
+    <circle cx="705" cy="435" r="6"/>
+    <!-- sala este -->
+    <circle cx="690" cy="215" r="7"/>
+    <circle cx="725" cy="260" r="6"/>
+  </g>
+  <!-- Beim Constructor (baron, mas grande) -->
+  <circle cx="365" cy="260" r="10" fill="#dd1111" stroke="#550000" stroke-width="2"/>
+  <circle cx="365" cy="260" r="4" fill="#ff8888"/>
+
+  <!-- ===================== ITEMS ===================== -->
+  <!-- Botiquines grandes (blancos con cruz) -->
+  <g>
+    <rect x="100" y="215" width="16" height="16" fill="#ffffff"/>
+    <path d="M108 218 v10 M103 223 h10" stroke="#ff0000" stroke-width="2.2" fill="none"/>
+    <rect x="540" y="300" width="16" height="16" fill="#ffffff"/>
+    <path d="M548 303 v10 M543 308 h10" stroke="#ff0000" stroke-width="2.2" fill="none"/>
+    <rect x="405" y="470" width="16" height="16" fill="#ffffff"/>
+    <path d="M413 473 v10 M408 478 h10" stroke="#ff0000" stroke-width="2.2" fill="none"/>
+  </g>
+  <!-- Botiquines pequeños -->
+  <g fill="#c8c8c8">
+    <rect x="225" y="125" width="11" height="11"/>
+    <rect x="665" y="130" width="11" height="11"/>
+    <rect x="480" y="500" width="11" height="11"/>
+    <rect x="770" y="140" width="11" height="11"/>
+  </g>
+  <!-- Armadura azul (militar) -->
+  <rect x="222" y="353" width="15" height="15" fill="#3366ff" stroke="#88aaff" stroke-width="1.5"/>
+  <!-- Armadura verde -->
+  <rect x="85" y="130" width="15" height="15" fill="#00ff88" stroke="#aaffdd" stroke-width="1.5"/>
+  <!-- Soul Sphere (esfera azul brillante pulsante) -->
+  <circle cx="745" cy="350" r="11" fill="#44aaff">
+    <animate attributeName="fill" values="#44aaff;#0066ff;#44aaff" dur="1.2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="745" cy="346" r="3.5" fill="#cfe9ff" opacity="0.9"/>
+  <!-- Megasphere -->
+  <circle cx="765" cy="465" r="10" fill="#ff5555">
+    <animate attributeName="opacity" values="1;0.55;1" dur="1s" repeatCount="indefinite"/>
+  </circle>
+  <!-- Armas: Escopeta / Chaingun / Rocket -->
+  <polygon points="700,130 730,130 715,150" fill="#ffff33" stroke="#666600"/>
+  <polygon points="380,110 405,110 392,126" fill="#ffaa00" stroke="#664400"/>
+  <rect x="600" y="450" width="10" height="26" rx="2" fill="#ffcc00" transform="rotate(25 605 463)"/>
+  <!-- Munición: cajas -->
+  <g fill="#b9855c" stroke="#664428" stroke-width="1">
+    <rect x="150" y="172" width="13" height="10"/>
+    <rect x="530" y="128" width="13" height="10"/>
+    <rect x="455" y="420" width="13" height="10"/>
+    <rect x="675" y="128" width="13" height="10"/>
+  </g>
+  <!-- Barriles explosivos -->
+  <g>
+    <circle cx="255" cy="152" r="6" fill="#ff8800" stroke="#663300"/><circle cx="255" cy="152" r="3" fill="#ffcc66"/>
+    <circle cx="263" cy="160" r="6" fill="#ff8800" stroke="#663300"/><circle cx="263" cy="160" r="3" fill="#ffcc66"/>
+    <circle cx="430" cy="458" r="6" fill="#ff8800" stroke="#663300"/><circle cx="430" cy="458" r="3" fill="#ffcc66"/>
+    <circle cx="712" cy="278" r="6" fill="#ff8800" stroke="#663300"/><circle cx="712" cy="278" r="3" fill="#ffcc66"/>
+  </g>
+  <!-- Power-ups: Berserker (paquete rojo) / Invisibility -->
+  <rect x="618" y="255" width="13" height="13" fill="#aa0000" stroke="#ff4444" stroke-width="1.2"/>
+  <circle cx="340" cy="310" r="8" fill="none" stroke="#9966ff" stroke-width="2" stroke-dasharray="3 3"/>
+
+  <!-- ===================== JUGADOR (flecha orientada) ===================== -->
+  <g transform="translate(140,168) rotate(35)">
+    <polygon points="0,-14 10,10 0,4 -10,10" fill="#ffffff" stroke="#000000" stroke-width="0.8"/>
+    <circle cx="0" cy="-4" r="3" fill="#ffd700"/>
+  </g>
+  <!-- Jugador fantasma #2 (co-op) -->
+  <g transform="translate(690,240) rotate(-70)">
+    <polygon points="0,-11 8,8 0,3 -8,8" fill="#dddddd" stroke="#000000" stroke-width="0.7"/>
+  </g>
+
+  <!-- ===================== ETIQUETAS DE SALAS ===================== -->
+  <g font-family="monospace" font-size="10" fill="#55aa55" text-anchor="middle" opacity="0.85">
+    <text x="175" y="105">START</text>
+    <text x="445" y="98">NUKAGE YARD</text>
+    <text x="255" y="335">TELEPORT</text>
+    <text x="480" y="432">ARENA</text>
+    <text x="607" y="500">EXIT</text>
+    <text x="720" y="118">COMPUTER ROOM</text>
+    <text x="765" y="418">SECRET</text>
+  </g>
+
+  <!-- ===================== HUD INFERIOR: stats estilo DOOM ===================== -->
+  <g font-family="monospace" font-size="14">
+    <text x="70" y="730" fill="#aa0000">E1M1: HANGAR</text>
+    <text x="300" y="730" fill="#ff7700">KILLS 62%</text>
+    <text x="445" y="730" fill="#ff7700">ITEMS 87%</text>
+    <text x="590" y="730" fill="#ff7700">SECRETS 0%</text>
+    <text x="775" y="730" fill="#ff7700">TIME 3:47</text>
+  </g>
+
+  <!-- ===================== LEYENDA ===================== -->
+  <g font-family="monospace" font-size="10">
+    <rect x="770" y="520" width="195" height="185" fill="#000000" opacity="0.65" stroke="#1d4d1d" stroke-width="1"/>
+    <text x="780" y="536" fill="#109f10">— AUTOMAP LEGEND —</text>
+    <polygon points="783,545 798,552 783,559 787,552" fill="#ffffff"/>
+    <text x="805" y="556" fill="#bbbbbb">Player</text>
+    <circle cx="790" cy="569" r="5" fill="#ff2a2a"/>
+    <text x="805" y="573" fill="#bbbbbb">Monster</text>
+    <rect x="783" y="580" width="13" height="13" fill="#ffffff"/>
+    <path d="M789.5 582 v9 M785 586.5 h9" stroke="#ff0000" stroke-width="2.4" fill="none"/>
+    <text x="805" y="591" fill="#bbbbbb">Medikit</text>
+    <line x1="782" y1="598" x2="800" y2="598" stroke="#3333ff" stroke-width="5"/>
+    <text x="805" y="606" fill="#bbbbbb">Door</text>
+    <line x1="782" y1="608" x2="800" y2="608" stroke="#ff1111" stroke-width="5"/>
+    <line x1="782" y1="612" x2="800" y2="612" stroke="#ff1111" stroke-width="5"/>
+    <text x="805" y="615" fill="#bbbbbb">Exit</text>
+    <ellipse cx="790" cy="626" rx="10" ry="5" fill="url(#nukageGlow)" stroke="#7a8f00" stroke-width="1"/>
+    <text x="805" y="630" fill="#bbbbbb">Nukage</text>
+    <circle cx="790" cy="643" r="7" fill="#44aaff"/>
+    <text x="805" y="647" fill="#bbbbbb">Soul Sphere</text>
+    <rect x="785" y="652" width="10" height="10" fill="#ff8800"/>
+    <text x="805" y="663" fill="#bbbbbb">Barrel</text>
+    <rect x="785" y="668" width="10" height="10" fill="#ffff33"/>
+    <polygon points="785,682 800,682 792,694" fill="#ffff33"/>
+    <text x="805" y="680" fill="#bbbbbb">Weapon</text>
+    <path d="M782 700 h16" stroke="#c9b400" stroke-width="2" fill="none"/>
+    <path d="M782 706 h16" stroke="#c9b400" stroke-width="2" fill="none"/>
+    <text x="805" y="703" fill="#bbbbbb">Stairs</text>
+  </g>
+</svg>

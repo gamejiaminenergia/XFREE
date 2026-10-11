@@ -77,6 +77,21 @@ def test_transport_failures_never_embed_the_key(monkeypatch):
     assert KEY not in str(error.value)
 
 
+def test_retries_a_dropped_connection(monkeypatch):
+    attempts = {"n": 0}
+
+    def opener(request, timeout=None):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise ConnectionResetError(104, "connection reset by peer")
+        return FakeResponse({"model": "jev-1.0", "answers": {}})
+
+    monkeypatch.setattr(jev_client.time, "sleep", lambda *_: None)
+    client = JevClient(api_key=KEY, opener=opener)
+    assert client.ask({"a": 1}, {"q": {"type": "noul"}})["model"] == "jev-1.0"
+    assert attempts["n"] == 2
+
+
 def test_retries_on_429_honouring_retry_after(monkeypatch):
     attempts = {"n": 0}
     slept = []

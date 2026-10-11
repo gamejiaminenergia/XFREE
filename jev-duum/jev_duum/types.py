@@ -8,6 +8,22 @@ MOVEMENTS = ("forward", "back", "strafe_left", "strafe_right", "hold")
 AIMS = ("left", "straight", "right")
 INTERACTIONS = ("fire", "use", "neither")
 
+# Alignment tolerances shared by the deterministic guard and the prompt text.
+# The guard turns toward a route until it is inside the aim tolerance and only
+# advances along a route that is inside the forward tolerance.
+ROUTE_AIM_TOLERANCE_RADIANS = 0.04
+ROUTE_FORWARD_TOLERANCE_RADIANS = 0.08
+
+
+@dataclass(frozen=True, slots=True)
+class AssistanceEvent:
+    """One deterministic override of a raw proposal, kept for the record."""
+
+    kind: str
+    reason: str
+    proposed: str
+    applied: str
+
 
 @dataclass(frozen=True, slots=True)
 class DuumControls:

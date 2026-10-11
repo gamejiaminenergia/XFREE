@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from .benchmark import run_headless
 from .env import load_local_env
 from .integration import DuumIntegrationError, default_duum_checkout, load_duum
 from .panel import run_jev_window
+from .prompts import PROMPT_VERSIONS
 from .recording import EpisodeRecorder
 from .replay import replay_recording
 from .wad import default_wad_path, resolve_wad
@@ -52,6 +54,12 @@ def make_parser() -> argparse.ArgumentParser:
         help="Override the System One endpoint (default: TYPESAFE_URL or the public API)",
     )
     parser.add_argument(
+        "--prompt-version",
+        choices=PROMPT_VERSIONS,
+        default=None,
+        help="Jev request shape (default: JEV_PROMPT_VERSION or the packaged default)",
+    )
+    parser.add_argument(
         "--decision-rate",
         type=float,
         default=10.0,
@@ -63,7 +71,25 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ticks", type=int, default=3600)
     parser.add_argument("--checkpoint-every", type=int, default=60)
     parser.add_argument("--record", type=Path)
+    parser.add_argument(
+        "--record-snapshots",
+        action="store_true",
+        help="Also store each decision's canonical snapshot and request state for offline prompt A/B",
+    )
+    parser.add_argument(
+        "--no-world-model",
+        action="store_true",
+        help="Do not attach the schematic world model (map/sense.py + heuristics.py) to the request",
+    )
     parser.add_argument("--replay", type=Path)
+    parser.add_argument(
+        "--log-calls",
+        action="store_true",
+        help=(
+            "Force the passive audit log on: POST every Jev request/response to the "
+            "local API (:3000), overriding JEV_NO_LOG. Failures are silent."
+        ),
+    )
     parser.add_argument("--size", default="320x200")
     parser.add_argument("--scale", type=int, default=2)
     return parser
@@ -96,11 +122,17 @@ def _validate(parser, args):
         parser.error(f"the {args.pilot} baseline is headless; add --headless")
     if args.record and not args.headless:
         parser.error("exact recording currently requires synchronous --headless mode")
+    if args.record_snapshots and not args.record:
+        parser.error("--record-snapshots requires --record")
 
 
 def _controller(parser, args):
     if args.pilot not in ("jev", "jev-assisted"):
         return None
+    if getattr(args, "log_calls", False):
+        # The client only enables the audit log when JEV_NO_LOG is unset; this
+        # flag is the explicit opt-in for a session that inherits the variable.
+        os.environ.pop("JEV_NO_LOG", None)
     print("Connecting to TypeSafe System One (Jev)...", file=sys.stderr)
     try:
         from .controller import JevDuumController
@@ -109,6 +141,9 @@ def _controller(parser, args):
             args.model,
             endpoint=args.endpoint,
             assisted=args.pilot == "jev-assisted",
+            prompt_version=args.prompt_version,
+            world_model=not args.no_world_model,
+            pilot=args.pilot,
         )
     except (FileNotFoundError, ValueError, RuntimeError) as error:
         parser.error(str(error))
@@ -216,6 +251,7 @@ def play(argv=None) -> int:
                 decision_rate=args.decision_rate,
                 model=controller.metadata if controller else None,
                 network="online: api.typesafe.ai" if controller else "offline",
+                capture_snapshots=args.record_snapshots,
             )
         try:
             summary = run_headless(
@@ -238,6 +274,7 @@ def play(argv=None) -> int:
             duum={"commit": modules.commit, "source": modules.source},
             wad=wad.to_dict(),
             model=controller.metadata if controller else None,
+            prompt_version=controller.prompt_version if controller else None,
         )
     print(json.dumps(summary, indent=2))
     return 1 if summary.get("model_error") else 0

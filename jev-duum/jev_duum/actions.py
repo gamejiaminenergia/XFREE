@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from .geometry import best_progress_movement
 from .types import DuumControls
 
 # These values are Duum's documented host contract, not frontend key names.
@@ -123,15 +124,19 @@ def settle_assisted_controls(controls: DuumControls, snapshot) -> DuumControls:
         controls.aim == "right" and bearing >= -tolerance
     )
     if not crossed:
+        # Still turning: keep the player moving toward the guide instead of
+        # idling through the turn.  A safe strafe or forward step converges
+        # while the aim comes around, which is what removes the long freezes.
+        if guided_movement and controls.movement == "hold":
+            preferred = best_progress_movement(snapshot, bearing)
+            if preferred is not None:
+                return replace(controls, movement=preferred)
         return controls
     movement = controls.movement
     if guided_movement and movement == "hold":
-        forward = next(
-            (option for option in snapshot.movement_options if option.name == "forward"),
-            None,
-        )
-        if forward is not None and forward.safe:
-            movement = "forward"
+        preferred = best_progress_movement(snapshot, bearing)
+        if preferred is not None:
+            movement = preferred
     return replace(controls, aim="straight", movement=movement)
 
 
