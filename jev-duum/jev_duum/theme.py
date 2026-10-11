@@ -1,7 +1,7 @@
 """The whole style guide in numbers, shared by the panel and the telemetry.
 
 ``DESIGN.md`` is the prose source of truth; this module is its single code home.
-It exists so ``telemetry.py`` can draw without importing ``panel.py`` (which
+It exists so the telemetry can draw without importing ``panel/`` (which
 imports the telemetry), and so a colour is defined exactly once.
 """
 

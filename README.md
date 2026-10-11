@@ -154,7 +154,7 @@ offline prompt harness and the measured results.
 ## Session telemetry
 
 Filling the slack that used to be black, seven instruments read data the pilot
-already has (`jev_duum/telemetry.py`): a latency sparkline with p50/p95 lines
+already has (`jev_duum/telemetry/`): a latency sparkline with p50/p95 lines
 and amber points over p95; confidence per head (MOV/APU/ACC); guard intervention
 rate and the most frequent rules; applied-movement and action distribution;
 health/ammo traces with a mark per intervention; tokens in/out plus running and
@@ -203,7 +203,7 @@ The five skips are the opt-in live smoke test (`JEV_LIVE=1` plus a key). See
 - [`docs/UI_IMPROVEMENT_PLAN.md`](docs/UI_IMPROVEMENT_PLAN.md) — the inspector
   redesign, fullscreen reflow and request/response detail.
 - [`DESIGN.md`](DESIGN.md) — **current**: the HMI style guide (transmission
-  SCADA discipline) that `panel.py`, `theme.py` and `telemetry.py` implement.
+  SCADA discipline) that `panel/`, `theme.py` and `telemetry/` implement.
 - [`docs/AI_DECISION_STAGE_PLAN.md`](docs/AI_DECISION_STAGE_PLAN.md) — the
   decision-first layout for a live AI talk (now the single window).
 - [`jev-duum/docs/JEV_INTEGRATION.md`](jev-duum/docs/JEV_INTEGRATION.md) —

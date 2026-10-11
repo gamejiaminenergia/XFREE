@@ -5,11 +5,12 @@ la presentación. ISA-101 exige escribirla *antes* de dibujar, y su ausencia es
 la razón por la que la interfaz se rehizo cinco veces. **Se cambia aquí primero
 y después en el código**, nunca al revés.
 
-Implementación: `jev-duum/jev_duum/panel.py` (paleta y widgets) y
-`jev-duum/jev_duum/overlays.py` (unifilar y banda de estado del canvas).
+Implementación: `jev-duum/jev_duum/panel/` (paleta, widgets, zonas y compositor)
+y `jev-duum/jev_duum/overlays/` (unifilar y banda de estado del canvas).
 Ambos toman sus colores de `jev-duum/jev_duum/theme.py`, la única casa de la
 paleta (la de la pantalla y la del unifilar).
-Verificación visual offline, sin gastar API: `jev-duum/tools/preview_panel.py`.
+Verificación visual offline, sin gastar API: `jev-duum/tools/preview_panel.py`;
+equivalencia determinista: `jev-duum/tools/dump_panel_tree.py`.
 
 ## 1. Qué es esta pantalla
 
@@ -56,8 +57,8 @@ TRACK = "#3c3c3c"   # fondo de barra (cromo)
 ```
 
 El código de la paleta vive en `jev_duum/theme.py`: una sola fuente que
-importan `panel.py` y `telemetry.py`. `DESIGN.md` sigue siendo la fuente de
-verdad en prosa; `theme.py` es su casa en código.
+importan `panel/`, `telemetry/` y `overlays/`. `DESIGN.md` sigue siendo la
+fuente de verdad en prosa; `theme.py` es su casa en código.
 
 #### Paleta del unifilar
 
@@ -168,7 +169,7 @@ bloque de enlace.
 
 ### Telemetría de sesión
 
-`jev_duum/telemetry.py` añade siete instrumentos que usan **sólo datos ya
+`jev_duum/telemetry/` añade siete instrumentos que usan **sólo datos ya
 existentes** (latencia, `confidence` por cabeza, `assistance_events`, controles
 aplicados, salud/munición, tokens y coste) y llenan el espacio que antes quedaba
 en negro:
@@ -216,7 +217,7 @@ No entra en esta pantalla, y no hace falta justificarlo cada vez:
 ## 7. Cómo se cambia
 
 1. Se cambia esta guía (qué se quiere decir y por qué).
-2. Se cambia `panel.py` / `overlays.py` para que la cumpla.
+2. Se cambia `panel/` / `overlays/` para que la cumpla.
 3. Se renderiza con `tools/preview_panel.py` (offline, 0 $) y se miran las
    capturas de `artifacts/ui-audit/`: cinco estados, `01-en-vivo` a
    `05-sin-modelo`.

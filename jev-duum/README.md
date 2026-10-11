@@ -71,7 +71,7 @@ state:
 | aim | left, straight, right |
 | interaction | fire, use, neither |
 
-Three frozen request shapes live in `jev_duum/prompts.py`:
+Three frozen request shapes live in `jev_duum/prompts/`:
 
 | Version | State | Questions |
 |---|---|---|
@@ -187,7 +187,7 @@ curl -s "localhost:3000/calls/<id>"                         # one complete call
 
 - Duum remains an external, pinned engine dependency and imports no model code.
 - Jev receives semantic snapshots, not the framebuffer.
-- The Tk window is presentation only (`panel.py`, `theme.py`, `telemetry.py`):
+- The Tk window is presentation only (`panel/`, `theme.py`, `telemetry/`):
   it reads snapshots and decisions and never touches the 60 Hz loop; its style
   guide is [`../DESIGN.md`](../DESIGN.md).
 - Raw model proposals and deterministic assistance remain separately recorded.

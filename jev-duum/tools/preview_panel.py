@@ -3,7 +3,7 @@
 This is a developer tool, not part of the pilot: it boots the pinned Duum
 engine locally and answers every "Jev decision" with a constant fake client, so
 the real ``Dashboard`` paints real pixels without a single network call.  Use it
-to review, screenshot and iterate on the interface (``panel.py`` / ``overlays``)
+to review, screenshot and iterate on the interface (``panel/`` / ``overlays/``)
 without spending on the TypeSafe API.
 
     uv run --no-sync python tools/preview_panel.py --out artifacts/ui-audit

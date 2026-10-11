@@ -5,7 +5,7 @@ and probabilities. The adapter therefore assembles one named-field state from
 the canonical snapshot and asks the three Duum choices in that same request.
 The deterministic assistance layer is model-agnostic; it only sees the argmax
 controls.  Which state and which questions travel is selected by prompt version;
-see ``prompts.py`` for the two frozen definitions.
+see ``prompts/`` for the two frozen definitions.
 """
 
 from __future__ import annotations

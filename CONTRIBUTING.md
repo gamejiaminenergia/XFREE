@@ -39,9 +39,18 @@ pinned Duum commit.
   overlays are presentation only: they read snapshots and decisions and never
   touch the 60 Hz loop, the snapshot contract or the decision worker. Keep the
   panel delta-updating (only redraw what changed) so a resize costs no frames.
-  The palette lives once in `theme.py`; the session charts in `telemetry.py` are
-  fixed-size canvases with bounded buffers, redrawn throttled, so the HMI
-  invariant (`tests/test_jev_hmi.py`) keeps passing.
+  The palette lives once in `theme.py`; the session charts in `telemetry/` are
+  fixed-size canvases with bounded buffers (`panel/session.py` owns them),
+  redrawn throttled, so the HMI invariant (`tests/test_jev_hmi.py`) keeps
+  passing.
+- **Six modules are packages with the same dotted path.** `snapshot/`,
+  `prompts/`, `panel/`, `telemetry/`, `overlays/` and `prompt_eval/` keep a
+  facade `__init__.py` that re-exports the old names; import them the same way
+  and add code into the module that owns the responsibility.
+- **A refactor must not change behaviour.** Before and after, run
+  `tools/dump_panel_tree.py` and `cmp` the JSON; keep the request contract green
+  in `tests/test_jev_prompt_contract.py` and
+  `tests/test_jev_snapshot_contract.py`. See [`docs/REFACTOR.md`](docs/REFACTOR.md).
 - **What travels to Jev is semantic.** No pixels, ever. Anything the panel
   shows that does not ride in the request is display-only and should be labelled
   as such (see the diagram's world tags).
