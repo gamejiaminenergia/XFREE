@@ -1,0 +1,277 @@
+<!doctype html>
+<!--
+  The pilot in a browser.  Same discipline as the Tk panel (DESIGN.md): black
+  background, static text in white/grey, colour reserved for the abnormal, and a
+  datum has one home.  The palette is injected by the service from theme.py, so
+  there is still a single source of truth for the colours.
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SCADA+IA+JEV+DOOM</title>
+<style>
+  :root {
+/* PALETTE */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--value);
+    font: 12px/1.45 "DejaVu Sans Mono", ui-monospace, monospace;
+  }
+  header {
+    display: flex; gap: 18px; align-items: baseline;
+    padding: 6px 12px; border-bottom: 1px solid var(--rule); background: var(--panel);
+  }
+  header .brand { color: var(--title); font-weight: bold; letter-spacing: 2px; }
+  header .brand b { color: var(--warn); }
+  header .sub { color: var(--static); }
+  main { display: grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap: 8px; padding: 8px; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  section { background: var(--panel); border: 1px solid var(--rule); }
+  h2 {
+    margin: 0; padding: 5px 8px; font-size: 12px; color: var(--title);
+    border-bottom: 1px solid var(--rule); font-weight: bold; letter-spacing: 1px;
+  }
+  .body { padding: 7px 8px; }
+  img#game {
+    display: block; width: 100%; image-rendering: pixelated;
+    background: var(--bg); border-bottom: 1px solid var(--rule); aspect-ratio: 8/5;
+  }
+  .row { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+  .tag { color: var(--static); }
+  .off { color: var(--off); }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .alarm { color: var(--alarm); }
+  .info { color: var(--info); }
+  .fill { background: var(--warn); color: var(--bg); padding: 0 4px; }
+  .fill.alarm { background: var(--alarm); }
+  .bar { height: 8px; background: var(--track); margin: 3px 0 6px; }
+  .bar span { display: block; height: 100%; background: var(--value); }
+  .head { margin-top: 6px; }
+  .head .choice { font-size: 17px; font-weight: bold; color: var(--value); }
+  .head .conf { float: right; }
+  .head.muted .choice, .head.muted .bar span { color: var(--off); background: var(--off); }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.k { color: var(--static); width: 32%; }
+  footer { padding: 6px 12px; color: var(--off); border-top: 1px solid var(--rule); }
+  .alarmword { color: var(--alarm); }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">SCADA<b>+</b>IA<b>+</b>JEV<b>+</b>DOOM</span>
+  <span class="sub" id="meta">…</span>
+  <span id="clock" class="sub"></span>
+  <span id="link" class="ok">EN LÍNEA</span>
+  <span id="alarm" class="sub">ALARMA 0</span>
+</header>
+
+<main>
+  <section>
+    <h2>JUEGO · MEDIDAS DEL AGENTE</h2>
+    <img id="game" alt="vista del motor">
+    <div class="body">
+      <div class="row"><span class="tag">SALUD</span><span id="health">—</span></div>
+      <div class="row"><span class="tag">ARMADURA</span><span id="armor">—</span></div>
+      <div class="row"><span class="tag">MUNICIÓN</span><span id="ammo">—</span></div>
+      <div class="row"><span class="tag">ARMA</span><span id="weapon">—</span></div>
+      <div class="row"><span class="tag">PUNTOS</span><span id="kills">—</span></div>
+      <div class="row"><span class="tag">SECTORES</span><span id="sectors">—</span></div>
+      <div class="row"><span class="tag">DAÑO</span><span id="damage">—</span></div>
+      <div class="row"><span class="tag">PARADO</span><span id="stuck">—</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>DECISIÓN DE LA IA</h2>
+    <div class="body" id="decision">esperando la primera decisión…</div>
+  </section>
+
+  <section>
+    <h2>ENLACE · PETICIÓN Y RESPUESTA</h2>
+    <div class="body">
+      <table id="linktable"></table>
+    </div>
+    <h2>GUARDIA DETERMINISTA</h2>
+    <div class="body" id="guard">—</div>
+  </section>
+</main>
+
+<main style="grid-template-columns: 2fr 1fr;">
+  <section>
+    <h2>EVENTOS · ÚLTIMO ARRIBA</h2>
+    <div class="body" id="events">sin decisiones todavía</div>
+  </section>
+  <section>
+    <h2>BALANCE DE SESIÓN</h2>
+    <div class="body" id="balance">—</div>
+  </section>
+</main>
+
+<footer>
+  <span id="status">conectando…</span> · estado por <span id="transport">websocket</span> ·
+  <code>/api/state</code> <code>/api/frame.png</code> <code>/ws</code> <code>/api/control</code>
+</footer>
+
+<script>
+const META = __META__;
+const $ = (id) => document.getElementById(id);
+const AXES = [["movement", "MOVIMIENTO", "MOV"], ["aim", "APUNTADO", "APU"],
+              ["interaction", "ACCIÓN", "ACC"], ["target", "OBJETIVO", "OBJ"]];
+const history = [];
+let latest = null;
+
+function band(value) {
+  if (value === null || value === undefined) return ["SIN DATO", "off"];
+  if (value >= 0.70) return ["ALTA", "ok"];
+  if (value >= 0.40) return ["MEDIA", "warn"];
+  return ["BAJA", "alarm"];
+}
+const esc = (text) => String(text).replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+
+function renderDecision(state) {
+  const decision = state.decision;
+  const host = $("decision");
+  if (!decision) { host.innerHTML = '<span class="off">esperando la primera decisión…</span>'; return; }
+  const muted = !!state.error || state.stale > 3;
+  let html = "";
+  for (const [name, title, tag] of AXES) {
+    const values = (decision.probabilities || {})[name];
+    if (!values) continue;
+    const best = Object.keys(values).reduce((a, b) => (values[a] >= values[b] ? a : b));
+    const [word, level] = muted ? ["SIN DATO", "off"] : band((decision.confidence || {})[name]);
+    const extras = Object.entries(values).filter(([k]) => k !== best)
+      .map(([k, v]) => `${esc(k)} ${v.toFixed(2)}`).join("  ");
+    html += `<div class="head${muted ? " muted" : ""}">
+      <span class="tag">${tag} ${title}</span>
+      <span class="conf ${level}">${word}${decision.confidence?.[name] != null ? " " + decision.confidence[name].toFixed(2) : ""}</span>
+      <div class="choice">${esc(best.toUpperCase().replace(/_/g, " "))}</div>
+      <div class="bar"><span style="width:${(values[best] * 100).toFixed(0)}%"></span></div>
+      <div class="off">${extras || "&nbsp;"}</div>
+    </div>`;
+  }
+  host.innerHTML = html;
+}
+
+function renderLink(state) {
+  const decision = state.decision;
+  const rows = [
+    ["MODELO", decision?.model ?? "—"],
+    ["PROMPT", decision?.prompt_version ?? "—"],
+    ["TOKENS", decision ? (decision.tokens?.request ?? 0) : "—"],
+    ["COSTE", decision ? "$" + Number(decision.cost_usd).toFixed(5) : "—"],
+    ["PETICIÓN", decision ? Math.round(decision.request_ms) + " ms" : "—"],
+    ["DECISIÓN", decision ? Math.round(decision.decision_ms) + " ms" : "—"],
+    ["EDAD", state.decision ? (state.tick - state.decision.observation_tick) + " ticks" : "—"],
+    ["BÚCLEO", state.worker ? `${state.worker.completed} hechas / ${state.worker.replaced} descartadas` : "—"],
+  ];
+  $("linktable").innerHTML = rows.map(([k, v]) => `<tr><td class="k">${k}</td><td>${esc(v)}</td></tr>`).join("");
+}
+
+function renderGuard(state) {
+  const events = state.decision?.interventions ?? [];
+  if (!events.length) { $("guard").innerHTML = '<span class="ok">SIN INTERVENCIÓN</span>'; return; }
+  const rows = events.slice(0, 3)
+    .map((e) => `<div><span class="warn">${esc(e.kind)}</span> <span class="off">${esc(e.proposed)}→${esc(e.applied)}</span></div>`);
+  $("guard").innerHTML = `<div><span class="fill">INTERVINO ×${events.length}</span></div>` + rows.join("");
+}
+
+function renderHistory() {
+  if (!history.length) return;
+  $("events").innerHTML = history.slice(0, 5).map((row) => {
+    const flag = row.interventions ? '<span class="fill">INTERVINO</span>' : '<span class="off">APLICADO</span>';
+    return `<div class="row"><span class="off">#${String(row.n).padStart(4, "0")} ${row.tick}</span>
+      <span>${esc(row.movement)} ${esc(row.aim)} ${esc(row.interaction)}</span>
+      <span class="${row.confidence != null && row.confidence < 0.4 ? "alarm" : "ok"}">${row.confidence?.toFixed(2) ?? "—"}</span>
+      <span class="off">${Math.round(row.ms)}ms</span> ${flag}</div>`;
+  }).join("");
+}
+
+function renderBalance() {
+  const counts = (key) => history.reduce((acc, row) => (acc[row[key]] = (acc[row[key]] || 0) + 1, acc), {});
+  const fmt = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([k, v]) => `${esc(k)} ${v}`).join("  ") || "—";
+  const interventions = history.filter((row) => row.interventions).length;
+  $("balance").innerHTML =
+    `<div class="row"><span class="tag">MOV</span><span>${fmt(counts("movement"))}</span></div>` +
+    `<div class="row"><span class="tag">ACC</span><span>${fmt(counts("interaction"))}</span></div>` +
+    `<div class="row"><span class="tag">GUARDIA</span><span>${interventions}/${history.length}</span></div>`;
+}
+
+function render(state) {
+  latest = state;
+  $("clock").textContent = `${state.map}  TICK ${state.tick}  T+${Number(state.game_time).toFixed(1)}s`;
+  const dead = state.state !== "running";
+  let text = "EN LÍNEA", level = "ok";
+  if (state.error) { text = "SIN COMUNICACIÓN"; level = "alarm"; }
+  else if (state.stale > 3) { text = `DATOS OBSOLETOS ×${state.stale}`; level = "warn"; }
+  else if (dead) { text = "SALUD CRÍTICA"; level = "alarm"; }
+  $("link").textContent = text;
+  $("link").className = level;
+  $("alarm").textContent = state.error || state.stale > 3 ? "ALARMA 1" : "ALARMA 0";
+  $("alarm").className = level === "ok" ? "sub" : level;
+
+  const player = state.player;
+  $("health").textContent = player.health;
+  $("health").className = player.health <= player.max_health * 0.35 ? "alarm"
+    : player.health <= player.max_health * 0.70 ? "warn" : "";
+  $("armor").textContent = player.armor;
+  $("ammo").textContent = player.ammo >= 999 ? "∞" : player.ammo;
+  $("weapon").textContent = player.weapon;
+  $("kills").textContent = state.episode.kills;
+  $("sectors").textContent = state.episode.unique_sectors;
+  $("damage").textContent = state.episode.damage_received;
+  $("stuck").textContent = `${state.episode.stuck_ticks} / ${state.episode.idle_ticks}`;
+
+  renderDecision(state);
+  renderLink(state);
+  renderGuard(state);
+
+  const decision = state.decision;
+  if (decision && (!history.length || history[0].n !== decision.observation_tick)) {
+    history.unshift({
+      n: decision.observation_tick, tick: decision.observation_tick,
+      movement: decision.applied.movement, aim: decision.applied.aim,
+      interaction: decision.applied.interaction,
+      confidence: Math.max(...Object.values(decision.confidence || { x: null })
+        .filter((v) => v !== null).concat([0])),
+      ms: decision.decision_ms,
+      interventions: decision.interventions.length,
+    });
+    history.splice(40);
+    renderHistory();
+    renderBalance();
+  }
+  $("status").textContent = `${state.worker?.applied ?? 0} decisiones aplicadas · ${state.stale} obsoletas`;
+}
+
+// ── transport: websocket, with polling as the fallback ──────────────────────
+function startPolling() {
+  $("transport").textContent = "polling /api/state";
+  setInterval(async () => {
+    try {
+      const response = await fetch("/api/state", { cache: "no-store" });
+      if (response.ok) render(await response.json());
+    } catch (error) { $("status").textContent = "sin conexión: " + error; }
+  }, 200);
+}
+
+function startSocket() {
+  const socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  socket.onmessage = (event) => { const payload = JSON.parse(event.data); if (payload.state) render(payload.state); };
+  socket.onerror = () => { $("transport").textContent = "polling /api/state"; };
+  socket.onclose = () => { setTimeout(startPolling, 500); };
+  $("transport").textContent = "websocket /ws";
+}
+
+$("meta").textContent = [META.pilot, META.model, META.prompt_version, META.map,
+                         META.engine_commit ? META.engine_commit.slice(0, 7) : null]
+  .filter(Boolean).join(" · ");
+setInterval(() => { $("game").src = "/api/frame.png?t=" + Date.now(); }, 90);
+startSocket();
+</script>
+</body>
+</html>
