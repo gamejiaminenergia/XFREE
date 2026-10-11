@@ -8,15 +8,17 @@ import math
 
 from ..types import DuumControls
 from .entities import EntitySection
+from .mesh import MeshSection
 from .models import (
     DuumSnapshot,
     EpisodeSnapshot,
     PlayerSnapshot,
 )
 from .navigation import NavigationSection
+from .routes import RouteSection
 
 
-class SnapshotBuilder(EntitySection, NavigationSection):
+class SnapshotBuilder(EntitySection, NavigationSection, MeshSection, RouteSection):
     def __init__(self, app, engine_module):
         self.app = app
         self.engine = engine_module

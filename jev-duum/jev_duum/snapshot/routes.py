@@ -1,0 +1,311 @@
+"""The two routes the snapshot plans: to the objective and to the hunt target."""
+
+from __future__ import annotations
+
+import math
+
+from .geometry import _bearing_word, _distance_word
+from .models import NavigationSnapshot
+
+
+class RouteSection:
+    def _navigation(self, tick: int) -> NavigationSnapshot | None:
+        level, exits, graph, connecting_line, line_subsectors = self._nav_graph()
+        if not exits:
+            return None
+        start = self._point_subsector(self.app.px, self.app.py)
+        queue = [start]
+        previous = {start: None}
+        selected = None
+        objective = "exit"
+        target_point = None
+        target_line = None
+        use_when_near = False
+        exit_lookup = {}
+        for line_index, subsectors, use_when_near in exits:
+            for subsector, _ in subsectors:
+                exit_lookup.setdefault(subsector, (line_index, use_when_near))
+        for subsector in queue:
+            if subsector in exit_lookup:
+                selected = subsector
+                break
+            for neighbor in sorted(graph.get(subsector, ())):
+                if neighbor not in previous:
+                    previous[neighbor] = subsector
+                    queue.append(neighbor)
+        if selected is None:
+            reachable_order = {subsector: index for index, subsector in enumerate(queue)}
+            key_names = {1: "blue-key", 2: "red-key", 4: "yellow-key"}
+            key_targets = []
+            unavailable_keys = []
+            for thing in self.app.things_live:
+                pickup = self.engine.PICKUP.get(thing[3])
+                if pickup is None or pickup[0] != 5 or thing[10] != 0:
+                    continue
+                key_bit = int(pickup[1])
+                if self.app.keys & key_bit:
+                    continue
+                key_x, key_y = float(thing[0]), float(thing[1])
+                key_subsector = self._point_subsector(key_x, key_y)
+                key_sector = int(self.app.ss_sectors()[key_subsector])
+                unavailable_keys.append(
+                    (key_names.get(key_bit, "key"), int(level.sectors[key_sector][6]))
+                )
+                # Duum collects pickups inside a 40-unit axis-aligned box.
+                # A key can therefore be reachable from beside or below a
+                # platform even when its own sector cannot be entered.  Route
+                # to a reachable collection point instead of inventing an
+                # edge into the key's raised sector.
+                for offset_x, offset_y in (
+                    (0.0, 0.0),
+                    (-36.0, 0.0),
+                    (36.0, 0.0),
+                    (0.0, -36.0),
+                    (0.0, 36.0),
+                    (-36.0, -36.0),
+                    (-36.0, 36.0),
+                    (36.0, -36.0),
+                    (36.0, 36.0),
+                ):
+                    target = (key_x + offset_x, key_y + offset_y)
+                    if self._geometry_blocked(*target, *target):
+                        continue
+                    key_subsector = self._point_subsector(*target)
+                    if key_subsector not in reachable_order:
+                        continue
+                    key_targets.append(
+                        (
+                            reachable_order[key_subsector],
+                            math.dist((float(self.app.px), float(self.app.py)), target),
+                            key_subsector,
+                            key_names.get(key_bit, "key"),
+                            target,
+                        )
+                    )
+            if key_targets:
+                _, _, selected, objective, target_point = min(key_targets)
+            else:
+                switch_targets = []
+                for key_name, key_tag in unavailable_keys:
+                    if not key_tag:
+                        continue
+                    for line_index, line in enumerate(level.lines):
+                        action = self.engine.ACT.get(line[3])
+                        if (
+                            action is None
+                            or action[1] != 0
+                            or action[0] not in (0, 1, 2, 3, 7)
+                            or line[4] != key_tag
+                        ):
+                            continue
+                        for switch_subsector, _ in line_subsectors.get(line_index, ()):
+                            if switch_subsector not in reachable_order:
+                                continue
+                            approach = self._portal_goal_subsector(
+                                line_index, switch_subsector
+                            )
+                            switch_targets.append(
+                                (
+                                    reachable_order[switch_subsector],
+                                    math.dist(
+                                        (float(self.app.px), float(self.app.py)), approach
+                                    ),
+                                    switch_subsector,
+                                    f"{key_name}-switch",
+                                    approach,
+                                    line_index,
+                                )
+                            )
+                if not switch_targets:
+                    return NavigationSnapshot(
+                        "exit", 0.0, "unknown", 0.0, "unknown", None, 0, False, False
+                    )
+                (
+                    _,
+                    _,
+                    selected,
+                    objective,
+                    target_point,
+                    target_line,
+                ) = min(switch_targets)
+                use_when_near = True
+        path = []
+        cursor = selected
+        while cursor is not None:
+            path.append(cursor)
+            cursor = previous[cursor]
+        path.reverse()
+        exit_line = None
+        if objective == "exit":
+            exit_line, use_when_near = exit_lookup[selected]
+        subsector_sectors = self.app.ss_sectors()
+        current_subsector = path[0]
+        transitions = [
+            (index, connecting_line[(path[index], path[index + 1])])
+            for index in range(len(path) - 1)
+            if (path[index], path[index + 1]) in connecting_line
+        ]
+        internal_step = len(path) > 1 and (path[0], path[1]) not in connecting_line
+        if internal_step:
+            # A WAD can reuse one sector across a concave room.  The first
+            # cross-sector portal may be behind a wall even though the BSP
+            # route reaches it through adjacent subsectors of that same
+            # sector.  Preserve that internal step instead of aiming through
+            # the wall at the later portal (the E1M1 final-room stall).
+            next_subsector = path[1]
+            next_sector = int(subsector_sectors[next_subsector])
+            line_index = None
+            goal = self._subsector_center(next_subsector)
+            count, first = level.ssectors[next_subsector]
+            vertices = []
+            for seg_index in range(first, first + count):
+                seg = level.segs[seg_index]
+                vertices.extend((level.verts[seg[0]], level.verts[seg[1]]))
+            width = max(point[0] for point in vertices) - min(
+                point[0] for point in vertices
+            )
+            height = max(point[1] for point in vertices) - min(
+                point[1] for point in vertices
+            )
+            if min(width, height) < 32 and transitions:
+                # Door sectors can be thinner than the player's diameter, so
+                # their vertex-average center is not a standable destination.
+                # Aim at the following portal's midpoint and let the existing
+                # use interaction open the door before crossing.
+                _, portal_line_index = transitions[0]
+                portal = level.lines[portal_line_index]
+                ax, ay = level.verts[portal[0]]
+                bx, by = level.verts[portal[1]]
+                goal = ((ax + bx) / 2.0, (ay + by) / 2.0)
+        elif transitions:
+            transition_index, line_index = transitions[0]
+            next_subsector = path[transition_index + 1]
+            next_sector = int(subsector_sectors[next_subsector])
+            desired_subsector = next_subsector
+            # A Doom doorway can contain a sector only one player-diameter
+            # deep.  Its center is not a valid waypoint while the following
+            # door is closed.  Look through that vestibule and approach the
+            # actionable line from the current sector so `use` can open it.
+            if len(transitions) > 1:
+                lookahead_index, lookahead = transitions[1]
+                lookahead_line = level.lines[lookahead]
+                lookahead_action = self.engine.ACT.get(lookahead_line[3])
+                needs_use = self.engine.DOOR_USE.get(lookahead_line[3]) is not None or (
+                    lookahead_action is not None and lookahead_action[1] == 0
+                )
+                before_door = path[lookahead_index]
+                after_door = path[lookahead_index + 1]
+                approach = self._portal_goal_subsector(lookahead, before_door)
+                beyond = self._portal_goal_subsector(lookahead, after_door)
+                still_closed = self._geometry_blocked(*approach, *beyond)
+                if (
+                    needs_use
+                    and still_closed
+                    and self._point_subsector(*approach) == before_door
+                ):
+                    line_index = lookahead
+                    desired_subsector = before_door
+        else:
+            next_sector = None
+            if target_point is not None:
+                line_index = target_line
+                goal = target_point
+            else:
+                line_index = exit_line
+                goal = self._portal_goal_subsector(line_index, current_subsector)
+        if transitions and not internal_step:
+            goal = self._portal_goal_subsector(line_index, desired_subsector)
+        key = (objective, current_subsector, next_sector, line_index, goal)
+        if key != self._nav_key or tick - self._nav_planned_tick >= 90:
+            self._nav_points = self._grid_route(goal)
+            self._nav_key = key
+            self._nav_planned_tick = tick
+        while self._nav_points and math.dist(
+            (self.app.px, self.app.py), self._nav_points[0]
+        ) < 18:
+            self._nav_points.pop(0)
+        waypoint_x, waypoint_y = self._nav_points[0] if self._nav_points else goal
+        distance, bearing = self._relative(waypoint_x, waypoint_y)
+        return NavigationSnapshot(
+            objective=objective,
+            bearing=round(bearing, 6),
+            bearing_word=_bearing_word(bearing),
+            distance=round(distance, 3),
+            distance_word=_distance_word(distance),
+            next_sector=next_sector,
+            route_length=len(transitions),
+            reachable=True,
+            use_when_near=use_when_near and not transitions,
+        )
+
+    def _hunt_route(self, tick: int, target) -> NavigationSnapshot | None:
+        """The way to one monster: same graph as the exit route, own cache.
+
+        Chasing a raw bearing walks into walls and oscillates in corners.  This
+        returns the first waypoint of the actual subsector path -- through
+        doors and lifts when needed -- so ``guide_bearing`` always points at
+        somewhere the player can stand.
+        """
+
+        if target is None:
+            return None
+        level, exits, graph, connecting_line, _ = self._nav_graph()
+        start = self._point_subsector(self.app.px, self.app.py)
+        previous = {start: None}
+        queue = [start]
+        for subsector in queue:
+            for neighbor in sorted(graph.get(subsector, ())):
+                if neighbor not in previous:
+                    previous[neighbor] = subsector
+                    queue.append(neighbor)
+        goal = (float(target.x), float(target.y))
+        goal_subsector = self._point_subsector(goal[0], goal[1])
+        reachable = goal_subsector in previous and bool(previous)
+        if reachable:
+            selected = goal_subsector
+        else:
+            selected = min(
+                previous,
+                key=lambda subsector: math.dist(self._subsector_center(subsector), goal),
+            )
+        path = []
+        cursor = selected
+        while cursor is not None:
+            path.append(cursor)
+            cursor = previous[cursor]
+        path.reverse()
+        straight = not self._geometry_blocked(
+            float(self.app.px), float(self.app.py), goal[0], goal[1]
+        )
+        if straight:
+            waypoint = goal
+        elif len(path) >= 2:
+            line_index = connecting_line.get((path[0], path[1]))
+            if line_index is None:
+                waypoint = self._subsector_center(path[1])
+            else:
+                waypoint = self._portal_goal_subsector(line_index, path[1])
+        else:
+            waypoint = goal
+        key = (self._hunt_target_hint, round(waypoint[0], 1), round(waypoint[1], 1))
+        if key != self._hunt_key or tick - self._hunt_planned_tick >= 90:
+            self._hunt_points = self._grid_route(waypoint)
+            self._hunt_key = key
+            self._hunt_planned_tick = tick
+        while self._hunt_points and math.dist(
+            (float(self.app.px), float(self.app.py)), self._hunt_points[0]
+        ) < 18:
+            self._hunt_points.pop(0)
+        point = self._hunt_points[0] if self._hunt_points else waypoint
+        distance, bearing = self._relative(point[0], point[1])
+        return NavigationSnapshot(
+            objective=f"monster-{target.id}",
+            bearing=round(bearing, 6),
+            bearing_word=_bearing_word(bearing),
+            distance=round(distance, 3),
+            distance_word=_distance_word(distance),
+            next_sector=None,
+            route_length=max(0, len(path) - 1),
+            reachable=reachable,
+            use_when_near=False,
+        )
