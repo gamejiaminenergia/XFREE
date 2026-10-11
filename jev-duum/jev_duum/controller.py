@@ -70,6 +70,7 @@ class DecisionResult:
     # nothing here changes what the model sees.
     request_state: dict | None = None
     request_questions: dict | None = None
+    response_raw: dict | None = None
 
     def with_application_tick(self, tick: int) -> DecisionResult:
         return replace(self, application_tick=int(tick))
@@ -265,6 +266,7 @@ class JevDuumController:
             world_model_used=world is not None,
             request_state=state,
             request_questions=self.questions,
+            response_raw=response,
         )
 
     def _world_model(self, snapshot: DuumSnapshot) -> dict | None:

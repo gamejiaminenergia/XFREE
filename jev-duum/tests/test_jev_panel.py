@@ -4,7 +4,7 @@ from jev_duum.panel import (
     RED,
     DeltaCache,
     _percentile,
-    _questions_text,
+    _state_index,
     _threshold_color,
     advance_completed_level,
 )
@@ -57,16 +57,17 @@ def test_percentile_is_nearest_rank_and_safe_on_empty():
     assert _percentile([7], 0.99) == 7
 
 
-def test_questions_text_summarizes_the_request_shape():
-    questions = {
-        "movement": {
-            "type": "choice",
-            "instructions": "Choose the safest useful immediate movement.",
-            "criteria": {"forward": "advance", "hold": "stay"},
+def test_state_index_lists_every_top_level_key_with_its_shape():
+    text = _state_index(
+        {
+            "tick": 1234,
+            "map": "E1M1",
+            "player": {"health": 100, "armor": 0},
+            "threats": [{"id": 1}, {"id": 2}],
         }
-    }
-    text = _questions_text(questions)
-    assert "MOVEMENT" in text
-    assert "forward = advance" in text
-    assert "hold = stay" in text
-    assert _questions_text(None) == "—"
+    )
+    assert "tick" in text and "num 1234" in text
+    assert "map" in text and "str(4)" in text
+    assert "player" in text and "dict(2)" in text
+    assert "threats" in text and "list(2)" in text
+    assert _state_index(None) == "—"

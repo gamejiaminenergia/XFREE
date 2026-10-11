@@ -83,6 +83,11 @@ def make_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--replay", type=Path)
     parser.add_argument(
+        "--windowed",
+        action="store_true",
+        help="Start in a normal window instead of filling the screen (F11 toggles).",
+    )
+    parser.add_argument(
         "--log-calls",
         action="store_true",
         help=(
@@ -229,6 +234,7 @@ def play(argv=None) -> int:
                 scale=args.scale,
                 decision_rate=args.decision_rate,
                 max_stale_ticks=args.max_stale_ticks,
+                fullscreen=not args.windowed,
             )
         except RuntimeError as error:
             parser.error(str(error))

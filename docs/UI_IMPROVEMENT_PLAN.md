@@ -24,6 +24,27 @@ al modelo; es una copia para mostrar).
 Verificación: `uv run --no-sync python -m pytest -q` (131 pasan, 4 skip) y una
 sesión real con `run_jev_window` sobre E1M1 (motor Duum renderizando en vivo).
 
+**Pantalla completa y reflow (añadido después del plan).** La ventana arranca
+llenando la pantalla y se recompone al cambiar de tamaño (`<Configure>`): las
+columnas ajustan su ancho, el canvas de Duum sube al mayor zoom entero que
+quepa y el mini-automapa crece manteniendo la proporción del esquemático. F11
+alterna pantalla completa y `--windowed` arranca en ventana normal. Los
+umbrales de color y el delta-update siguen igual: sólo se redibuja lo que
+cambió, así que redimensionar no cuesta fotogramas.
+
+A pantalla completa no hay barra de título, así que el inspector lleva arriba a
+la derecha dos botones: `□ F11` (alterna pantalla completa) y `✕ salir` (cierra
+por el mismo `app.quit` de Menu → Quit, sin callbacks pendientes).
+
+**Detalle de la petición (añadido después del plan).** La pestaña PETICIÓN se
+rehizo para aprovechar el alto disponible: una fila de chips (modelo, prompt,
+tokens, tamaño en bytes, nº de claves del `state`, nº de preguntas) y tres
+secciones que se reparten el espacio — el `state` completo que viaja a Jev (JSON
+con colores y sin wrapping, 5/8 del alto), las preguntas con sus `instructions`
+y `criteria` verbatim (3/8) y un índice del `state` con el tipo y tamaño de cada
+clave. La pestaña RESPUESTA añade el `JSON crudo de la respuesta` para auditar
+lo que devolvió el modelo, no sólo las distribuciones interpretadas.
+
 ## 1. Estado actual (auditado, no imaginado)
 
 ### 1.1 Ventana de juego — `jev-duum/jev_duum/panel.py` (Tk)

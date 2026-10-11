@@ -45,6 +45,7 @@ RED = "#ef5350"
 GOLD = "#ffca28"
 BLUE = "#42a5f5"
 VIOLET = "#b388ff"
+DIM = "#5b6376"
 
 FONTS = {"mono": "DejaVu Sans Mono", "ui": "DejaVu Sans"}
 
@@ -151,13 +152,23 @@ class Meter:
         fraction = 0.0 if maximum <= 0 else min(1.0, max(0.0, value / maximum))
         color = _threshold_color(self.base, value, warn_at, crit_at, phase)
         display = str(value) if text is None else str(text)
-        key = (round(fraction, 4), color, display)
+        width = self._track_width()
+        key = (width, round(fraction, 4), color, display)
         if key == self._last:
             return
         self._last = key
-        self.canvas.coords(self.fill, 0, 0, self.width * fraction, self.height)
+        self.canvas.coords(self.fill, 0, 0, width * fraction, self.height)
         self.canvas.itemconfigure(self.fill, fill=color)
         self.value.configure(text=display, fg=color)
+
+    def _track_width(self):
+        # The canvas packs with ``fill="x"``, so on a wider window the track
+        # stretches; read the real width instead of the requested one.
+        width = self.canvas.winfo_width()
+        return width if width > 1 else self.width
+
+    def refresh(self):
+        self._last = None
 
 
 class BarRow:
@@ -177,7 +188,7 @@ class BarRow:
         self.canvas = tkinter.Canvas(
             self.row, width=width, height=height, bg=TRACK, highlightthickness=0
         )
-        self.canvas.pack(side="left", padx=(0, 8))
+        self.canvas.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.fill = self.canvas.create_rectangle(0, 0, 0, height, fill=INERT, outline="")
         self.value = tkinter.Label(
             self.row, text="—", width=5, anchor="e", bg=CARD, fg=TEXT,
@@ -187,19 +198,28 @@ class BarRow:
         self._last = None
 
     def set(self, value, *, best=False):
-        key = (round(float(value), 3), bool(best))
+        width = self.canvas.winfo_width()
+        if width <= 1:
+            width = self.width
+        key = (width, round(float(value), 3), bool(best))
         if key == self._last:
             return
         self._last = key
-        self.canvas.coords(
-            self.fill, 0, 0, self.width * max(0.0, min(1.0, value)), self.height
-        )
+        self.canvas.coords(self.fill, 0, 0, width * max(0.0, min(1.0, value)), self.height)
         self.canvas.itemconfigure(self.fill, fill=self.best_color if best else INERT)
         self.value.configure(text=f"{value:.2f}", fg=self.best_color if best else TEXT)
         self.label.configure(
             fg=self.best_color if best else MUTED,
             font=(FONTS["mono"], 9, "bold") if best else (FONTS["mono"], 9),
         )
+
+    def refresh(self):
+        """Redraw the last value after a resize changed the track width."""
+
+        last = self._last
+        self._last = None
+        if last is not None:
+            self.set(last[1], best=last[2])
 
 
 class Pill:
@@ -226,11 +246,14 @@ class Pill:
 class Card:
     """A titled container so the inspector reads as sections, not a log."""
 
-    def __init__(self, tkinter, parent, title, *, accent=ACCENT, pady=(0, 8), expand=False):
+    def __init__(
+        self, tkinter, parent, title, *, accent=ACCENT, pady=(0, 8), expand=False, manage=True
+    ):
         self.frame = tkinter.Frame(
             parent, bg=CARD, highlightbackground=BORDER, highlightthickness=1
         )
-        self.frame.pack(fill="both" if expand else "x", expand=expand, pady=pady)
+        if manage:
+            self.frame.pack(fill="both" if expand else "x", expand=expand, pady=pady)
         header = tkinter.Frame(self.frame, bg=CARD)
         header.pack(fill="x", padx=10, pady=(8, 2))
         tkinter.Frame(header, width=3, height=13, bg=accent).pack(side="left")
@@ -256,10 +279,10 @@ def _field_row(tkinter, parent, key, *, width=15):
     return value
 
 
-def _scrolling_text(tkinter, parent, *, height, wrap="word", size=9):
+def _scrolling_text(tkinter, parent, *, height, wrap="word", size=9, width=40):
     frame = tkinter.Frame(parent, bg=CARD)
     text = tkinter.Text(
-        frame, height=height, wrap=wrap, bg=BG2, fg=TEXT, relief="flat",
+        frame, height=height, width=width, wrap=wrap, bg=BG2, fg=TEXT, relief="flat",
         font=(FONTS["mono"], size), padx=8, pady=6, insertbackground=TEXT,
         selectbackground="#2b3546", highlightthickness=0, state="disabled",
     )
@@ -298,15 +321,23 @@ class ScrollFrame:
         self.canvas.bind_all("<MouseWheel>", self._wheel)
 
     def _resize(self, _event=None):
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self._toggle_bar()
+        self._sync()
 
     def _fit(self, event):
-        self.canvas.itemconfigure(self._window, width=event.width)
-        self._toggle_bar()
+        self._sync(event.width)
 
-    def _toggle_bar(self):
-        needed = self.inner.winfo_reqheight() > self.canvas.winfo_height() + 1
+    def _sync(self, width=None):
+        """Stretch the inner frame to the viewport so ``expand`` still fills."""
+
+        canvas_w = int(width or self.canvas.winfo_width())
+        canvas_h = self.canvas.winfo_height()
+        natural = self.inner.winfo_reqheight()
+        height = max(natural, canvas_h)
+        self.canvas.itemconfigure(self._window, width=canvas_w, height=height)
+        self.canvas.configure(scrollregion=(0, 0, canvas_w, height))
+        self._toggle_bar(natural > canvas_h + 1)
+
+    def _toggle_bar(self, needed):
         if needed and not self.bar.winfo_ismapped():
             self.bar.pack(side="right", fill="y")
         elif not needed and self.bar.winfo_ismapped():
@@ -351,27 +382,35 @@ def _insert_json_line(text, line):
     text.insert("end", line[position:] + "\n")
 
 
-def _questions_text(questions) -> str:
-    if not questions:
+def _state_index(state) -> str:
+    """One line per top-level state key, with its type and size."""
+
+    if not isinstance(state, dict):
         return "—"
-    lines = []
-    for name, question in questions.items():
-        lines.append(f"{name.upper()}  [{question.get('type', 'choice')}]")
-        if question.get("instructions"):
-            lines.append(f"  {question['instructions']}")
-        criteria = question.get("criteria") or {}
-        if criteria:
-            lines.append("  " + "   ".join(f"{key} = {value}" for key, value in criteria.items()))
-        lines.append("")
-    return "\n".join(lines).strip()
+    rows = []
+    for key, value in state.items():
+        if isinstance(value, dict):
+            kind = f"dict({len(value)})"
+        elif isinstance(value, (list, tuple)):
+            kind = f"list({len(value)})"
+        elif isinstance(value, bool):
+            kind = f"bool {value}"
+        elif isinstance(value, (int, float)):
+            kind = f"num {value}"
+        else:
+            kind = f"str({len(str(value))})"
+        rows.append((str(key), kind))
+    width = max((len(key) for key, _ in rows), default=0)
+    return "\n".join(f"{key:<{width}}  {kind}" for key, kind in rows)
 
 
 class Dashboard:
     """One-window layout: stats left, untouched game center, Jev inspector right."""
 
-    def __init__(self, tkinter, window):
+    def __init__(self, tkinter, window, *, fullscreen=True):
         FONTS["mono"], FONTS["ui"] = _pick_families(tkinter)
         self.tk = tkinter
+        self.window = window
         self.cache = DeltaCache()
         self._latencies: list[float] = []
         self._cost = 0.0
@@ -380,6 +419,13 @@ class Dashboard:
         self._counted = None
         self._assist_sig = None
         self._strategy_sig = None
+        self._geo = None
+        self._fullscreen = False
+        self._left_w = 252
+        self._right_w = 528
+        self.game_w = int(getattr(window.cv, "w", 320))
+        self.game_h = int(getattr(window.cv, "h", 200))
+        self.base_scale = max(1, int(getattr(window, "scale", 1)))
 
         root = window.root
         root.configure(bg=BG)
@@ -400,7 +446,126 @@ class Dashboard:
         self._build_center(window)
         self._build_right()
 
+        root.bind("<Configure>", self._on_configure)
+        root.bind("<F11>", self._toggle_fullscreen)
+        self._set_fullscreen(fullscreen)
+        root.after(60, self._initial_relayout)
+
     # -- helpers -------------------------------------------------------------
+    def _set_fullscreen(self, enabled):
+        """Fill the screen on start; F11 toggles, and some WMs need a fallback."""
+
+        self._fullscreen = bool(enabled)
+        root = self.window.root
+        try:
+            root.attributes("-fullscreen", self._fullscreen)
+        except self.tk.TclError:  # pragma: no cover - platform dependent
+            return
+        if self._fullscreen:
+            root.update_idletasks()
+            screen_w = root.winfo_screenwidth()
+            screen_h = root.winfo_screenheight()
+            # A window manager that ignores -fullscreen still gets a sized window.
+            if root.winfo_width() < screen_w * 0.9 or root.winfo_height() < screen_h * 0.9:
+                try:
+                    root.geometry(f"{screen_w}x{screen_h}+0+0")
+                except self.tk.TclError:  # pragma: no cover
+                    pass
+        root.after(50, self._relayout_now)
+
+    def _toggle_fullscreen(self, _event=None):
+        self._set_fullscreen(not self._fullscreen)
+        return "break"
+
+    def _close_window(self, _event=None):
+        """The window has no title bar in fullscreen; give the user a way out."""
+
+        try:
+            # The same flag the engine's own Menu -> Quit sets: the frame loop
+            # closes the window cleanly on its next tick, with no pending callbacks.
+            self.window.app.quit = True
+            return "break"
+        except Exception:  # pragma: no cover - fall back to a hard close
+            try:
+                self.window._close()
+            except Exception:
+                pass
+        return "break"
+
+    def _header_button(self, parent, text, command, *, danger=False):
+        idle = "#ff9d9d" if danger else MUTED
+        button = self.tk.Label(
+            parent, text=text, bg=CARD, fg=idle, font=(FONTS["mono"], 9, "bold"),
+            padx=8, pady=4, cursor="hand2",
+            highlightbackground=BORDER, highlightthickness=1,
+        )
+        button.pack(side="left", padx=(6, 0))
+        button.bind("<Button-1>", command)
+        button.bind("<Enter>", lambda _event: button.configure(fg=TEXT))
+        button.bind("<Leave>", lambda _event: button.configure(fg=idle))
+        return button
+
+    def _on_configure(self, event):
+        if event.widget is not self.window.root:
+            return
+        self._relayout(event.width, event.height)
+
+    def _relayout_now(self):
+        root = self.window.root
+        self._relayout(root.winfo_width(), root.winfo_height())
+
+    def _initial_relayout(self):
+        root = self.window.root
+        self._relayout(max(root.winfo_width(), root.winfo_reqwidth()),
+                       max(root.winfo_height(), root.winfo_reqheight()))
+
+    def _relayout(self, total_w, total_h):
+        """Reflow the columns and scale the game/automap to the window size."""
+
+        if total_w <= 1 or total_h <= 1:
+            return
+        if (total_w, total_h) == self._geo:
+            return
+        self._geo = (total_w, total_h)
+
+        left_w = 252 if total_w < 1500 else 264
+        right_w = 528 if total_w < 1500 else max(560, min(760, int(total_w * 0.34)))
+        if left_w != self._left_w:
+            self.left.configure(width=left_w)
+            self._left_w = left_w
+            for meter in (self.health, self.armor, self.ammo):
+                meter.refresh()
+        if right_w != self._right_w:
+            self.right.configure(width=right_w)
+            self._right_w = right_w
+            for rows in getattr(self, "bars", {}).values():
+                for row in rows.values():
+                    row.refresh()
+
+        center_w = max(200, total_w - left_w - right_w - 40)
+        center_h = max(200, total_h - 30)
+
+        # The automap keeps its schematic aspect ratio and grows with the column
+        # without ever stealing too much height from the game view.
+        map_w = int(max(240, min(center_w - 24, 780)))
+        map_h = int(map_w * 407 / 730) + 16
+        max_map_h = max(160, int(center_h * 0.34))
+        if map_h > max_map_h:
+            map_h = max_map_h
+            map_w = int((map_h - 16) * 730 / 407)
+        self.minimap.resize(map_w, map_h)
+
+        # Largest integer zoom that leaves room for the header and the automap.
+        map_block = map_h + 46
+        avail_h = max(self.game_h, center_h - map_block - 34)
+        scale = max(
+            self.base_scale,
+            min(center_w // self.game_w, avail_h // self.game_h),
+        )
+        if scale != self.window.scale:
+            self.window.scale = scale
+        self.window.tkcv.configure(width=self.game_w * scale, height=self.game_h * scale)
+
     def _label(self, key, widget, text, **options):
         state = (text, tuple(sorted(options.items())))
         if not self.cache.changed(key, state):
@@ -453,6 +618,10 @@ class Dashboard:
             wraplength=220, justify="left", anchor="w", padx=10, pady=6,
         )
         self.banner.pack(side="bottom", fill="x", padx=12, pady=12)
+        tk.Label(
+            self.left, text="F11 · pantalla completa", bg=PANEL, fg=DIM,
+            font=(FONTS["mono"], 8),
+        ).pack(side="bottom", pady=(0, 4))
 
         self.health = Meter(tk, self.left, "Health", GREEN)
         self.armor = Meter(tk, self.left, "Armor", BLUE)
@@ -505,6 +674,10 @@ class Dashboard:
         tk = self.tk
         header = tk.Frame(self.right, bg=PANEL2)
         header.pack(fill="x", padx=16, pady=(14, 0))
+        controls = tk.Frame(header, bg=PANEL2)
+        controls.pack(side="right", anchor="ne")
+        self._header_button(controls, "□  F11", self._toggle_fullscreen)
+        self._header_button(controls, "✕  salir", self._close_window, danger=True)
         tk.Label(
             header, text="INSPECTOR JEV", bg=PANEL2, fg=GREEN,
             font=(FONTS["mono"], 15, "bold"),
@@ -641,15 +814,59 @@ class Dashboard:
                 rows[label] = BarRow(tk, card.body, label)
             self.bars[axis] = rows
 
-    def _tab_request(self, parent):
-        tk = self.tk
-        card = Card(tk, parent, "Preguntas", accent=BLUE)
-        frame, self.questions_text = _scrolling_text(tk, card.body, height=11, size=8)
+        card = Card(tk, parent, "JSON crudo de la respuesta", accent=MUTED)
+        frame, self.response_raw_text = _scrolling_text(
+            tk, card.body, height=9, size=8, width=30, wrap="none"
+        )
         frame.pack(fill="x")
 
-        card = Card(tk, parent, "Estado enviado a Jev", accent=VIOLET, expand=True)
-        frame, self.state_text = _scrolling_text(tk, card.body, height=15, size=8)
+    def _tab_request(self, parent):
+        tk = self.tk
+        chips = tk.Frame(parent, bg=PANEL2)
+        chips.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(1, weight=5)
+        parent.grid_rowconfigure(2, weight=3)
+        self.request_chips = {}
+        for key, caption in (
+            ("model", "MODELO"),
+            ("prompt", "PROMPT"),
+            ("tokens", "TOKENS"),
+            ("bytes", "TAMAÑO"),
+            ("keys", "CLAVES"),
+            ("questions", "PREGUNTAS"),
+        ):
+            cell = tk.Frame(chips, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
+            cell.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            value = tk.Label(
+                cell, text="—", bg=CARD, fg=TEXT, font=(FONTS["mono"], 12, "bold")
+            )
+            value.pack(anchor="w", padx=8, pady=(5, 0))
+            tk.Label(
+                cell, text=caption, bg=CARD, fg=MUTED, font=(FONTS["mono"], 7)
+            ).pack(anchor="w", padx=8, pady=(0, 5))
+            self.request_chips[key] = value
+
+        card = Card(tk, parent, "Estado enviado (state)", accent=VIOLET,
+                    expand=True, manage=False)
+        card.frame.grid(row=1, column=0, sticky="nsew", pady=(0, 8))
+        frame, self.state_text = _scrolling_text(
+            tk, card.body, height=18, size=9, width=30, wrap="none"
+        )
         frame.pack(fill="both", expand=True)
+
+        card = Card(tk, parent, "Preguntas al modelo", accent=BLUE,
+                    expand=True, manage=False)
+        card.frame.grid(row=2, column=0, sticky="nsew", pady=(0, 8))
+        frame, self.questions_text = _scrolling_text(tk, card.body, height=13, size=9, width=22)
+        frame.pack(fill="both", expand=True)
+
+        card = Card(tk, parent, "Índice del estado", accent=ACCENT, manage=False)
+        card.frame.grid(row=3, column=0, sticky="ew")
+        frame, self.state_index_text = _scrolling_text(
+            tk, card.body, height=11, size=8, width=30, wrap="none"
+        )
+        frame.pack(fill="x")
 
     def _tab_world(self, parent):
         tk = self.tk
@@ -888,6 +1105,9 @@ class Dashboard:
             else:
                 color = GREEN if confidence >= 0.7 else AMBER if confidence >= 0.4 else RED
                 self.confidence[axis].set(f"conf {confidence:.2f}", fg="#10210f", bg=color)
+        self._render_json(
+            "response-raw", self.response_raw_text, getattr(decision, "response_raw", None)
+        )
 
     def _update_warmup(self, error):
         message = f"sin respuesta aún · {error}" if error else "esperando la primera decisión…"
@@ -897,6 +1117,7 @@ class Dashboard:
             self.confidence[axis].set("conf n/a", fg=MUTED, bg=CARD)
         for key in self.response_fields:
             self._label(f"resp-{key}", self.response_fields[key], "—", fg=MUTED)
+        self._render_json("response-raw", self.response_raw_text, None)
         for axis in ("movement", "aim", "interaction"):
             self.prop[axis].set("—", fg=MUTED, bg=CARD)
             self.appl[axis].set("—", fg=MUTED, bg=CARD)
@@ -914,11 +1135,34 @@ class Dashboard:
         if decision is None:
             self._render_text("questions", self.questions_text, "—")
             self._render_json("state", self.state_text, None)
+            self._render_text("state-index", self.state_index_text, "—")
+            for key, chip in self.request_chips.items():
+                self._label(f"chip-{key}", chip, "—")
             return
-        self._render_text(
-            "questions", self.questions_text, _questions_text(decision.request_questions)
+        state = decision.request_state
+        self._render_json("state", self.state_text, state)
+        self._render_text("state-index", self.state_index_text, _state_index(state))
+        self._render_json("questions-json", self.questions_text, decision.request_questions)
+        payload = json.dumps(
+            {
+                "model": decision.model_id,
+                "prompt": decision.prompt_version,
+                "state": state,
+                "questions": decision.request_questions,
+            },
+            ensure_ascii=False,
+            default=str,
         )
-        self._render_json("state", self.state_text, decision.request_state)
+        chips = {
+            "model": decision.model_id,
+            "prompt": decision.prompt_version,
+            "tokens": str((decision.input_tokens or {}).get("request", 0)),
+            "bytes": f"{len(payload.encode('utf-8'))} B",
+            "keys": str(len(state) if isinstance(state, dict) else 0),
+            "questions": str(len(decision.request_questions or {})),
+        }
+        for key, value in chips.items():
+            self._label(f"chip-{key}", self.request_chips[key], value)
 
     # -- world tab -----------------------------------------------------------
     def _update_world(self, readout, decision):
@@ -978,6 +1222,7 @@ def run_jev_window(
     scale=2,
     decision_rate=12.0,
     max_stale_ticks=30,
+    fullscreen=True,
     on_decision=None,
 ):
     """Run normal Duum rendering while a one-in-flight worker chooses controls."""
@@ -1001,7 +1246,7 @@ def run_jev_window(
     if map_name and app.level != map_name:
         app.load_level(map_name)
     builder = SnapshotBuilder(app, modules.engine)
-    panel = Dashboard(modules.frontend.tkinter, window)
+    panel = Dashboard(modules.frontend.tkinter, window, fullscreen=fullscreen)
     started = time.perf_counter()
     tick = 0
     frames = 0

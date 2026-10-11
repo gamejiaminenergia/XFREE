@@ -73,6 +73,25 @@ class MiniMap:
             highlightthickness=1,
             highlightbackground=ROOM_LINE,
         )
+        self._last = None
+        self._recompute_projection()
+
+    def resize(self, width: int, height: int) -> None:
+        """Fit the automap into a new box, keeping the schematic aspect ratio."""
+
+        width = max(180, int(width))
+        height = max(120, int(height))
+        if (width, height) == (self.width, self.height):
+            return
+        self.width = width
+        self.height = height
+        self.canvas.configure(width=width, height=height)
+        self._recompute_projection()
+        if self._last is not None:
+            snapshot, readout, aim_assisted = self._last
+            self.render(snapshot, readout, aim_assisted=aim_assisted)
+
+    def _recompute_projection(self):
         minx, maxx, miny, maxy = SVG_BOUNDS
         pad = 8
         span_x, span_y = maxx - minx, maxy - miny
@@ -91,6 +110,7 @@ class MiniMap:
 
     # -- rendering -----------------------------------------------------------
     def render(self, snapshot, readout, *, aim_assisted: bool = False) -> None:
+        self._last = (snapshot, readout, bool(aim_assisted))
         canvas = self.canvas
         canvas.delete("all")
         try:
