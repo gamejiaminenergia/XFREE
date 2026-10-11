@@ -10,4 +10,6 @@ reference lives in [`../jev-duum/README.md`](../jev-duum/README.md).
 | [`UI_IMPROVEMENT_PLAN.md`](UI_IMPROVEMENT_PLAN.md) | Iteration 1 (superseded): the Tk inspector redesign — sections and delta-update, meters with thresholds, mini-automap, fullscreen reflow. |
 | [`AI_DECISION_STAGE_PLAN.md`](AI_DECISION_STAGE_PLAN.md) | Iteration 3 (superseded): a decision-first "stage" for a live AI congress — game demoted to PiP, the model's choice as protagonist. |
 | [`../DESIGN.md`](../DESIGN.md) | **Current**: the HMI style guide (transmission-SCADA discipline) implemented by `panel/`, `theme.py` (the single palette, screen and automap) and `telemetry/` (the session charts) — types, zones, telemetry, prohibitions. |
+| [`BACKEND.md`](BACKEND.md) | **Current**: the backend/frontend split — `session/` (policy + core), the terminal UI (`--tui`), the HTTP service (`jev-service/`), and recording from the engine's own frames. |
+| [`REFACTOR.md`](REFACTOR.md) | The MVC/SOLID refactor of the six big modules into packages: before/after sizes, the frozen contracts and how to revert it. |
 | [`../jev-duum/docs/JEV_INTEGRATION.md`](../jev-duum/docs/JEV_INTEGRATION.md) | Architecture, benchmarking, recording and deterministic replay. |

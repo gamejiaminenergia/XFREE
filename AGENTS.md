@@ -9,6 +9,14 @@
   `jev_log.py`.  The six former single-file modules are now packages with the
   **same dotted path**: each `__init__.py` is a facade that re-exports the old
   names, so every caller imports them unchanged.
+- `jev-duum/jev_duum/session/` — the backend: `policy.py` (the tick rules, as
+  pure functions) and `core.py` (`Session`: engine + snapshot + decision worker,
+  publishing one `Frame` per tick with the engine's own pixels). No Tk, no HTTP.
+- `jev-duum/jev_duum/tui/` — the terminal frontend (`curses`, standard library
+  only): the same panel over SSH, no display needed.
+- `jev-service/` — optional HTTP/WebSocket frontend over the session (FastAPI).
+  Lives outside the pilot so `jev-duum` keeps its single dependency; see
+  [`docs/BACKEND.md`](docs/BACKEND.md).
 - `jev-duum/jev_duum/panel/` — the HMI split by responsibility: `layout.py`
   (fixed numbers), `format.py` (pure helpers), `widgets.py` (primitives),
   `delta.py` (`DeltaCache`), `render.py` (apply-with-delta), `session.py`
@@ -33,10 +41,13 @@
 bash scripts/setup_duum.sh                      # clone Duum at the pinned commit
 cd jev-duum && uv sync                          # stdlib + Duum only
 uv run --no-sync jev-duum --pilot jev-assisted  # play (bash play.sh wraps it)
+uv run --no-sync jev-duum --pilot jev-assisted --tui   # same panel, in the terminal
 uv run --no-sync ruff check jev_duum tests      # lint
 uv run --no-sync python -m pytest -q            # 179 pass, 5 skip
 docker compose up -d                            # audit log :27017/:3000/:8081
 bash scripts/record.sh --launch --window        # graba la partida en video/
+bash scripts/record.sh --from-backend           # vídeo sin X (solo la vista del juego)
+cd jev-service && uv sync && uv run --no-sync jev-service --fake   # HTTP + navegador
 ```
 
 Two dev tools review the interface offline, at 0 $:

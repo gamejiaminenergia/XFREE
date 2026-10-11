@@ -9,13 +9,24 @@ exista en el repo.
 ```bash
 bash scripts/record.sh --launch              # lanza ./main.sh y graba la partida
 bash scripts/record.sh --launch --window     # graba solo la ventana del juego
+bash scripts/record.sh --from-backend        # vídeo sin X: el raster del motor
 bash scripts/record.sh --tipo demo           # graba lo que ya tengas en pantalla
 ```
 
 Por defecto graba **60 s** y para sola (`--seconds 0` para que no pare hasta que
 tú quieras; `Ctrl-C` también para, y el MP4 se cierra siempre, nunca a medias).
 
-Dos opciones que conviene no confundir:
+Dos modos que conviene no confundir:
+
+- **captura de pantalla** (`--window`, `--full`): graba píxeles del escritorio.
+  Es lo único que incluye el **panel SCADA** completo.
+- **desde el backend** (`--from-backend`): el motor entrega su propio frame RGB y
+  se lo pasa a ffmpeg por tubería. Exacto frame a frame, a 60 fps, sin X, sin
+  escritorio y sin recortes — pero graba **solo la vista del juego**, sin panel.
+  Necesita un checkout pinneado (`--duum-path`) y admite `--fake` (modelo local,
+  0 $).
+
+Con captura de pantalla, además:
 
 - **`--window`**: recorta la captura a la ventana del juego. Sin esto se graba
   todo el escritorio; en este equipo son dos monitores de 1920×1080, así que

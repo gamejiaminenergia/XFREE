@@ -37,6 +37,11 @@ OUT_DIR=""
 LAUNCH=0
 WINDOW=0
 WINDOWED=0
+FROM_BACKEND=0
+FAKE=0
+ENGINE_SIZE="320x200"
+DUUM_PATH=""
+WAD_PATH=""
 WINDOW_NAME="Duum"
 LAUNCH_CMD=""
 WAIT_WINDOW=180
@@ -63,6 +68,12 @@ Opciones:
   --scale WxH           reescala la salida (p.ej. 2560:720) para archivos más ligeros
   --out-dir DIR         carpeta destino (por defecto: video/<tipo>)
   --display SPEC        pantalla X (por defecto: $DISPLAY)
+  --from-backend        graba desde el raster del motor: sin X, sin escritorio y
+                        sin panel (solo la vista del juego), frame a frame exacto
+  --fake                con --from-backend, modelo local determinista (0 $, sin clave)
+  --engine-size WxH     tamano del canvas del motor (por defecto: 320x200)
+  --duum-path DIR       checkout pinneado del motor (solo --from-backend)
+  --wad PATH            IWAD a jugar (solo --from-backend)
   --window-name PAT     patrón de la ventana a grabar (por defecto: Duum)
   --launch-cmd CMD      comando de arranque alternativo a ./main.sh
   --seconds N           para a los N segundos; 0 = sin límite (por defecto: 60)
@@ -111,6 +122,11 @@ while [ $# -gt 0 ]; do
     --window) WINDOW=1; shift ;;
     --windowed) WINDOWED=1; shift ;;
     --full) WINDOW=0; shift ;;
+    --from-backend) FROM_BACKEND=1; shift ;;
+    --fake) FAKE=1; shift ;;
+    --engine-size) ENGINE_SIZE="${2:?}"; shift 2 ;;
+    --duum-path) DUUM_PATH="${2:?}"; shift 2 ;;
+    --wad) WAD_PATH="${2:?}"; shift 2 ;;
     --tipo) TIPO="${2:?--tipo necesita un valor}"; shift 2 ;;
     --nombre) NOMBRE="${2:?}"; shift 2 ;;
     --pilot) PILOT="${2:?}"; shift 2 ;;
@@ -166,6 +182,73 @@ STAMP_DATE="$(date +%Y-%m-%d)"
 STAMP_TIME="$(date +%H%M%S)"
 GAME_LOG="$TMP/record-game-$STAMP_TIME.log"
 GAME_PID=""
+
+# ── grabacion desde el backend: raster del motor -> ffmpeg, sin X ────────────
+if [ "$FROM_BACKEND" = 1 ]; then
+  case "$ENGINE_SIZE" in
+    *x*) ;;
+    *) echo "record.sh: --engine-size quiere WxH (p.ej. 320x200)" >&2; exit 2 ;;
+  esac
+  EGW="${ENGINE_SIZE%x*}"
+  EGH="${ENGINE_SIZE#*x}"
+  SLUG="$(sanitize "${NOMBRE:-}")"
+  BASE="${STAMP_DATE}_${STAMP_TIME}_${TIPO}_$(sanitize "$PILOT")_$(sanitize "$PROMPT_VER")_${EGW}x${EGH}"
+  [ -n "$SLUG" ] && BASE="${BASE}_${SLUG}"
+  MP4="$OUT_DIR/$BASE.mp4"
+  SIDECAR="$OUT_DIR/$BASE.json"
+  FAKE_ARG=""
+  [ "$FAKE" = 1 ] && FAKE_ARG="--fake"
+  DUUM_ARG=""
+  [ -n "$DUUM_PATH" ] && DUUM_ARG="--duum-path $DUUM_PATH"
+  WAD_ARG=""
+  [ -n "$WAD_PATH" ] && WAD_ARG="--wad $WAD_PATH"
+  echo "· grabando desde el backend ${EGW}x${EGH} a ${FPS} fps → $MP4"
+  echo "  (Ctrl-C lo para y cierra el MP4; es la vista del juego, sin panel)"
+  SUMMARY="$(cd "$ROOT/jev-duum" && uv run --no-sync python tools/record_headless.py \
+      --out "$MP4" --seconds "$SECONDS_LIMIT" --fps "$FPS" --crf "$CRF" \
+      --encoder "$ENCODER" --size "$ENGINE_SIZE" \
+      --pilot "$PILOT" --prompt-version "$PROMPT_VER" $FAKE_ARG $DUUM_ARG $WAD_ARG \
+      2>/dev/null | tail -1)"
+  if [ ! -s "$MP4" ]; then
+    echo "record.sh: no se generó el vídeo; resumen del grabador: $SUMMARY" >&2
+    exit 1
+  fi
+  getnum() { printf '%s' "$SUMMARY" | sed -n "s/.*\"$1\": \([0-9.]*\).*/\1/p"; }
+  getstr() { printf '%s' "$SUMMARY" | sed -n "s/.*\"$1\": \"\([^\"]*\)\".*/\1/p"; }
+  FRAMES="$(getnum frames)"
+  SECS="$(getnum seconds)"
+  CODEC="$(getstr encoder)"
+  MODEL_ID="$(getstr model)"
+  BYTES="$(stat -c %s "$MP4")"
+  COMMIT="$(getstr engine_commit)"
+  DUR="$(awk -v seconds="${SECS:-0}" 'BEGIN{printf "%d", seconds+0.5}')"
+  MM=$((DUR / 60)); SS=$((DUR % 60))
+  printf '%s\n' \
+    '{' \
+    "  \"archivo\": \"$BASE.mp4\"," \
+    "  \"tipo\": \"$TIPO\"," \
+    "  \"pilot\": \"$PILOT\"," \
+    "  \"prompt_version\": \"$PROMPT_VER\"," \
+    "  \"modelo\": \"$MODEL_ID\"," \
+    "  \"encoder\": \"$CODEC\"," \
+    "  \"resolucion\": \"${EGW}x${EGH}\"," \
+    "  \"origen\": \"backend\"," \
+    "  \"fps\": $FPS," \
+    "  \"calidad\": $CRF," \
+    "  \"frames\": ${FRAMES:-0}," \
+    "  \"duracion_s\": ${SECS:-0}," \
+    "  \"bytes\": $BYTES," \
+    "  \"motor_commit\": \"$COMMIT\"," \
+    "  \"fecha\": \"$(date -Iseconds)\"" \
+    '}' >"$SIDECAR"
+  echo
+  echo "✔ $MP4"
+  echo "  $((BYTES / 1048576)) MB · ${MM}:$(printf '%02d' "$SS") · ${EGW}x${EGH} @ ${FPS}fps · $CODEC · ${FRAMES:-0} frames · ficha: $(basename "$SIDECAR")"
+  echo
+  echo "Fila para video/README.md:"
+  echo "| \`$SUBDIR/$BASE.mp4\` | $TIPO | $PILOT | $PROMPT_VER | ${EGW}x${EGH} | ${MM}:$(printf '%02d' "$SS") | $CODEC |"
+  exit 0
+fi
 
 # ── 1. lanzar el juego si nos lo piden ───────────────────────────────────────
 if [ "$LAUNCH" = 1 ]; then
