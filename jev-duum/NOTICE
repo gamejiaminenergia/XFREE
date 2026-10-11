@@ -1,0 +1,22 @@
+jev-duum
+Copyright 2026 jev-duum contributors
+
+Adapter code is adapted from laya-duum, which controls the pure-Python Duum
+engine with the Laya decision model:
+https://github.com/hadlock/laya-duum
+Copyright laya-duum contributors. Licensed under Apache-2.0.
+
+Changes: the local Laya Core ML / torch decision backend is replaced by a
+remote TypeSafe System One (Jev) HTTP client. One request per decision carries
+the three choice questions against a single combined state; token accounting,
+cost reporting and per-question confidence recording are added; the engine
+adapter, canonical snapshot, deterministic assistance, fixed-tick scheduling,
+recording and replay layers are unchanged.
+
+No model weights are included in this repository: Jev is a remote API, and the
+adapter ships only standard-library HTTP code. This is an independent project,
+not an official Convai Innovations, Apple or TypeSafe release.
+
+This distribution may include Freedoom: Phase 1 content, copyright 2001-2024
+Contributors to the Freedoom project, under the BSD 3-Clause license. See
+FREEDOOM_LICENSE.txt.

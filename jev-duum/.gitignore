@@ -1,0 +1,18 @@
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Local secrets. The TypeSafe API key lives here, never in the source tree.
+.env
+artifacts/
+
+# Never add commercial or user-owned game data. The freely licensed Phase 1
+# IWAD below is the sole intentional exception.
+*.wad
+!freedoom1.wad

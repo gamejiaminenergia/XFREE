@@ -1,0 +1,26 @@
+# Pre-existing sibling checkouts keep their own git repositories and remotes.
+# This root checkpoint only versions the new Jev work (docs/ and jev-duum/).
+duum/
+laya-duum/
+laya-coreml/
+
+# Virtualenvs, caches and build output
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+**/*.egg-info/
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+**/.ruff_cache/
+dist/
+build/
+
+# Local secrets and regenerable evidence
+.env
+**/.env
+artifacts/
+**/artifacts/
