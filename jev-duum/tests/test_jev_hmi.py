@@ -179,6 +179,16 @@ def _geometry(panel):
         "event_state": panel._event_cells[0][8],
         "event_motive": panel._event_cells[0][9],
         "event_note": panel._event_note,
+        # The session telemetry: fixed-size canvases and one clipped line, so
+        # they hold the same invariant as every numbered panel.
+        "latency": panel.latency_spark.canvas,
+        "confidence": panel.confidence_spark.canvas,
+        "intervention": panel.intervention.canvas,
+        "actions": panel.action_bars.canvas,
+        "vital": panel.vital_trace.canvas,
+        "consumption": panel.consumption.canvas,
+        "policy_delta": panel.policy_delta.value,
+        "balance": panel._balance_panel.frame,
     }
     return {
         name: (widget.winfo_x(), widget.winfo_y(),

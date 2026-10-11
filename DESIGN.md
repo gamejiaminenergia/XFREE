@@ -53,6 +53,10 @@ OFF   = "#808080"   # fuera de servicio / sin dato
 TRACK = "#3c3c3c"   # fondo de barra (cromo)
 ```
 
+El código de la paleta vive en `jev_duum/theme.py`: una sola fuente que
+importan `panel.py` y `telemetry.py`. `DESIGN.md` sigue siendo la fuente de
+verdad en prosa; `theme.py` es su casa en código.
+
 Reglas de uso:
 
 1. **El cromo no usa nunca un color de dato**, y un color de dato **nunca
@@ -104,17 +108,24 @@ Un único mecanismo, `Flag.LEVELS`, decide el aspecto de todo estado:
 ## 5. Zonas de la pantalla
 
 ```
-┌─ BANNER ─ JEV·DUUM · mapa · tick y tiempo · EN LÍNEA · ALARMA n · F11 CERRAR ─┐
+┌─ BANNER ─ SCADA+IA+JEV+DOOM · mapa · tick y tiempo · EN LÍNEA · ALARMA n · F11 CERRAR ─┐
 ├──────────────────┬───────────────────────┬───────────────────────────────────┤
 │ MEDIDAS          │ DECISIÓN DE LA IA     │ ENLACE · PETICIÓN │ ENLACE·RESPUESTA│
 │  barras + tabla  │  una fila por pregunta│  TAG/valor + índice │ TAG/valor +   │
-│ DIAGRAMA         │  propuesto vs aplicado│  + preguntas tipadas│ JSON crudo    │
-│  unifilar + tags │  guardia · por qué    │                                     │
-│  + amenazas      │  estrategia           │                                     │
+│ DIAGRAMA         │  + TELEMETRÍA         │  + consumo          │ confianza +   │
+│  unifilar + tags │  guardia · por qué    │                     │ JSON crudo +  │
+│  + vida/munición │  estrategia           │                     │ estabilidad   │
 ├──────────────────┴───────────────────────┴───────────────────────────────────┤
-│ EVENTOS · # · TICK · MOV · APU · ACC · OBJ · CONF · ESTADO                    │
+│ EVENTOS · # · TICK · MOV · APU · ACC · OBJ · CONF · ESTADO   │ BALANCE ·     │
+│                                                              │ guardia ·acciones│
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
+
+El título de producto —`SCADA+IA+JEV+DOOM`, con el `+` en acento y debajo
+`Supervisión en tiempo real · jev-1.13.0`— es la única pieza dimensionada para
+leerse desde diez metros. Se compone de glifos sueltos porque Tk no tiene
+*tracking*; su ancho es fijo, así que nunca empuja al mapa, al reloj ni al
+bloque de enlace.
 
 - La columna del juego se dimensiona **al canvas del motor** (zoom entero
   máximo), nunca al revés: un carril más ancho sólo compra fondo.
@@ -122,6 +133,35 @@ Un único mecanismo, `Flag.LEVELS`, decide el aspecto de todo estado:
   fijo es cómo su cuerpo quedó sin mapear cuando el contenido natural no cabía.
 - El unifilar va **a la izquierda de sus tags**, no encima: un mapa
   letterboxed vale menos que uno cuadrado.
+
+### Telemetría de sesión
+
+`jev_duum/telemetry.py` añade siete instrumentos que usan **sólo datos ya
+existentes** (latencia, `confidence` por cabeza, `assistance_events`, controles
+aplicados, salud/munición, tokens y coste) y llenan el espacio que antes quedaba
+en negro:
+
+| Instrumento | Dónde | Dato |
+|---|---|---|
+| Sparkline de latencia, líneas p50/p95 y puntos ámbar por encima de p95 | bajo las barras de decisión | `decision_ms` |
+| Historial de confianza MOV/APU/ACC | panel de respuesta | `confidence` |
+| Tasa de intervención y reglas más frecuentes | franja inferior, derecha | `assistance_events` |
+| Distribución de movimientos y de acción | franja inferior, derecha | `applied_controls` |
+| Vida y munición, con una marca por intervención | junto al diagrama | `player.health/ammo` |
+| Tokens in/out por decisión, coste acumulado y medio | panel de petición | `input_tokens`, `usage`, `cost_usd` |
+| Decisión anterior vs actual | panel de respuesta | `applied_controls` |
+
+Reglas que no se negocian: cada instrumento es un `Canvas` de alto fijo (y ancho
+de petición modesto, para no ensanchar su columna) o una etiqueta de ancho fijo
+con el valor recortado, así que **la invariante de §3.5 sigue valiendo**; los
+buffers son `deque` acotados que vive el `Dashboard`, no el widget; y el redibujo
+va **throttled** (~3 Hz), sin tocar el bucle de 60 Hz ni al worker. Nada aquí usa
+un color nuevo: el ámbar solo marca lo anómalo (por encima de p95, el guardia
+actuando) y siempre lleva su palabra en el subtítulo.
+
+**Reacomodo.** Si el ancho baja de 1600 px, la franja inferior pasa de
+`EVENTOS │ BALANCE` a `EVENTOS` encima de `BALANCE`, en vez de desbordarse; el
+resto de la rejilla conserva sus celdas.
 
 ## 6. Prohibiciones
 

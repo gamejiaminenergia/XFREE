@@ -32,37 +32,56 @@ import json
 import re
 import statistics
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import replace
 
+from . import theme
 from .actions import controls_to_mask, ensure_usable_weapon, settle_assisted_controls
 from .overlays import MiniMap, StaleOverlay
 from .snapshot import SnapshotBuilder
+from .telemetry import (
+    ActionBars,
+    ConfidenceSpark,
+    ConsumptionPanel,
+    InterventionPanel,
+    LatencySpark,
+    PolicyDelta,
+    VitalTrace,
+)
+from .theme import (
+    ALARM,
+    BG,
+    FONTS,
+    INFO,
+    OFF,
+    PANEL,
+    RULE,
+    STATIC,
+    TITLE,
+    TRACK,
+    VALUE,
+    WARN,
+)
 from .types import DuumControls
 from .worker import DecisionWorker
 from .world_readout import read_world
 
-# ── palette: the whole style guide in nine values ────────────────────────────
-# Chrome never uses a data colour, and a data colour never decorates.  Static
-# text is white/grey; the four hues below are reserved, each with one meaning,
-# and each one always travels with the word that spells it out.
-BG = "#000000"        # screen background: black is the transmission default
-PANEL = "#0d0d0d"     # panel background, a shade above the screen
-RULE = "#333333"      # 1px separators; emphasis is line weight, not colour
-STATIC = "#b0b0b0"    # static text: labels, tags, table headers
-TITLE = "#ffffff"     # panel headings
-VALUE = "#ffffff"     # measured values, when everything is normal
-OK = "#00ff00"        # in service / applied as proposed
-WARN = "#ffa500"      # above a limit, guard intervention, stale data
-ALARM = "#ff0000"     # alarm: no link, critical health
-INFO = "#ffff00"      # reference information: limits, units, secondary
-OFF = "#808080"       # out of service / no data
-TRACK = "#3c3c3c"     # bargraph background (chrome, not information)
+# The panel's own tests import these names; the semantics are the ones in theme.
+GREEN, AMBER, RED = theme.OK, theme.WARN, theme.ALARM
 
-# The panel's own tests import these names; the semantics are the ones above.
-GREEN, AMBER, RED = OK, WARN, ALARM
-
-FONTS = {"mono": "DejaVu Sans Mono", "ui": "DejaVu Sans"}
+# The palette lives in ``theme.py`` so the telemetry widgets share one source of
+# truth; the names above are re-exported here unchanged for the panel's tests.
+# The title's tracking and the brand marks are the only type that is not chrome.
+TITLE_TEXT = "SCADA+IA+JEV+DOOM"
+TITLE_SUBTITLE = "Supervisión en tiempo real · jev-1.13.0"
+TITLE_PT = 22
+# How often the telemetry widgets are allowed to redraw, in seconds.  The loop
+# calls ``update`` every few ticks; the charts only need a few frames a second.
+TELEMETRY_INTERVAL = 0.30
+# How many decisions the telemetry buffers keep, and the brand type size.
+TELEMETRY_POINTS = 60
+# The banner's fixed height; the flexible row below it gets the rest.
+BANNER_H = 54
 
 # Height of the event list pinned to the bottom of the window.
 EVENT_H = 145
@@ -624,6 +643,21 @@ class Dashboard:
         self._tokens = 0
         self._decisions = 0
         self._counted = None
+        # Session telemetry: bounded buffers live here, never in a widget, and
+        # the charts are redrawn on a throttle so the loop stays untouched.
+        self._conf_hist: dict = {}
+        self._intervention_hist: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._rule_counts: Counter = Counter()
+        self._tokens_in: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._tokens_out: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._vitals_health: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._vitals_ammo: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._vitals_marks: deque = deque(maxlen=TELEMETRY_POINTS)
+        self._max_health = 100
+        self._delta_previous = None
+        self._applied_controls = None
+        self._telemetry_ts = 0.0
+        self._narrow = None
         self._strategy_sig = None
         self._geo = None
         self._fullscreen = False
@@ -755,8 +789,10 @@ class Dashboard:
             return
         self._geo = (total_w, total_h)
 
-        # banner + measurements + event list + the diagram's own chrome
-        reserved = 28 + 146 + EVENT_H + 130
+        # banner + measurements + the bottom strip + the diagram's own chrome
+        self._reflow(total_w)
+        bottom_h = EVENT_H + (110 if self._narrow else 0)
+        reserved = BANNER_H + 146 + bottom_h + 130
         avail_h = max(self.game_h, total_h - reserved)
         by_height = max(1, avail_h // self.game_h)
         by_width = max(1, int(total_w * 0.40) // self.game_w)
@@ -768,6 +804,32 @@ class Dashboard:
             bar.refresh()
         for row in self.axes.values():
             row.refresh()
+
+    def _reflow(self, total_w):
+        """Below 1600 px the bottom strip stacks instead of overflowing.
+
+        Only the telemetry reorganises with the window; the numbered panels keep
+        their cells and, per the guide, never move with their data.
+        """
+
+        narrow = total_w < 1600
+        if narrow == self._narrow:
+            return
+        self._narrow = narrow
+        events = self._events_panel.frame
+        balance = self._balance_panel.frame
+        events.grid_forget()
+        balance.grid_forget()
+        if narrow:
+            self._strip.grid_columnconfigure(0, weight=1)
+            self._strip.grid_columnconfigure(1, weight=0)
+            events.grid(row=0, column=0, sticky="ew")
+            balance.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        else:
+            self._strip.grid_columnconfigure(0, weight=3)
+            self._strip.grid_columnconfigure(1, weight=2)
+            events.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+            balance.grid(row=0, column=1, sticky="nsew")
 
     def _label(self, key, widget, text, **options):
         state = (text, tuple(sorted(options.items())))
@@ -811,9 +873,24 @@ class Dashboard:
         tk = self.tk
         left = tk.Frame(self.banner, bg=PANEL)
         left.pack(side="left", padx=8, pady=4)
+        # A product title the room can read from ten metres.  Tk has no
+        # letter-spacing, so each glyph is its own label with a hair of padding;
+        # the "+" carries the single accent.  Both lines are fixed width, so the
+        # brand never pushes the map, the clock or the link block beside it.
+        brand = tk.Frame(left, bg=PANEL)
+        brand.pack(side="left")
+        word = tk.Frame(brand, bg=PANEL)
+        word.pack(anchor="w")
+        for glyph in TITLE_TEXT:
+            tk.Label(
+                word, text=glyph, bg=PANEL,
+                fg=WARN if glyph == "+" else TITLE,
+                font=(FONTS["mono"], TITLE_PT, "bold"), padx=2,
+            ).pack(side="left")
         tk.Label(
-            left, text="JEV·DUUM", bg=PANEL, fg=TITLE, font=(FONTS["mono"], 12, "bold")
-        ).pack(side="left")
+            brand, text=TITLE_SUBTITLE, anchor="w", bg=PANEL, fg=STATIC,
+            font=(FONTS["mono"], 9),
+        ).pack(anchor="w")
         self.map_label = tk.Label(
             left, text="", width=9, anchor="w", bg=PANEL, fg=STATIC,
             font=(FONTS["mono"], 10),
@@ -890,6 +967,9 @@ class Dashboard:
             font=(FONTS["mono"], 9),
         )
         self.world_threats.pack(fill="x", pady=(4, 0))
+        # The lower slack beside the diagram carries the two vital traces with a
+        # mark on every tick the guard intervened.
+        self.vital_trace = VitalTrace(tk, side, width=190, height=44)
 
     def _build_situation(self):
         """The situational table lives inside the diagram panel.
@@ -910,6 +990,18 @@ class Dashboard:
         # the screen spends its extra height instead of collecting a gap.
         self.axes_body = tk.Frame(panel.body, bg=PANEL)
         self.axes_body.pack(fill="both", expand=True)
+        # The decision's own telemetry lives in the slack the bars would leave
+        # blank: latency and confidence at decision rate, directly under them.
+        tk.Frame(panel.body, bg=RULE, height=1).pack(fill="x", pady=(6, 0))
+        tk.Label(
+            panel.body, text="TELEMETRÍA · ÚLTIMAS 60 DECISIONES", anchor="w",
+            bg=PANEL, fg=STATIC, font=(FONTS["mono"], 9, "bold"),
+        ).pack(fill="x", pady=(4, 2))
+        self.decision_telemetry = tk.Frame(panel.body, bg=PANEL)
+        self.decision_telemetry.pack(fill="x")
+        self.latency_hold = tk.Frame(self.decision_telemetry, bg=PANEL)
+        self.latency_hold.pack(fill="x")
+        self.latency_spark = LatencySpark(tk, self.latency_hold)
 
         guard = Panel(tk, self.center, "Guardia determinista")
         guard.set_height(GUARD_H)
@@ -1013,6 +1105,9 @@ class Dashboard:
         ).pack(fill="x")
         self.questions_text = _plain_text(tk, panel.body, height=6, size=9, width=24)
         self.questions_text.pack(fill="both", expand=True, pady=(2, 0))
+        # The lower slack of the request panel carries what the request costs.
+        tk.Frame(panel.body, bg=RULE, height=1).pack(fill="x", pady=(6, 2))
+        self.consumption = ConsumptionPanel(tk, panel.body)
 
     def _build_response(self, parent):
         tk = self.tk
@@ -1034,6 +1129,11 @@ class Dashboard:
         self.response_raw_text = _plain_text(tk, panel.body, height=10, size=9, width=24,
                                              wrap="char")
         self.response_raw_text.pack(fill="both", expand=True, pady=(2, 0))
+        # Stability of the policy: what the previous decision and this one share,
+        # and the model's confidence per head over the session.
+        tk.Frame(panel.body, bg=RULE, height=1).pack(fill="x", pady=(6, 2))
+        self.confidence_spark = ConfidenceSpark(tk, panel.body)
+        self.policy_delta = PolicyDelta(tk, panel.body, width=28)
 
     # -- event list: newest first, one row per decision ---------------------
     def _build_events(self):
@@ -1045,7 +1145,17 @@ class Dashboard:
         """
 
         tk = self.tk
-        panel = Panel(tk, self.bottom, "Eventos · último arriba")
+        # The bottom strip is two panels now: the events table keeps its full
+        # height on the left, and the session balance fills the space to its right.
+        strip = tk.Frame(self.bottom, bg=BG)
+        strip.pack(fill="both", expand=True)
+        strip.grid_columnconfigure(0, weight=3)
+        strip.grid_columnconfigure(1, weight=2)
+        strip.grid_rowconfigure(0, weight=1)
+        self._strip = strip
+        panel = Panel(tk, strip, "Eventos · último arriba", manage=False)
+        panel.frame.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self._events_panel = panel
         # The loop's own telemetry sits in the header's blank right half rather
         # than on a line of its own.
         self._event_note = tk.Label(
@@ -1085,6 +1195,21 @@ class Dashboard:
             body.grid_columnconfigure(0, weight=1)
             self._event_cells.append(cells)
 
+        balance = Panel(tk, strip, "Balance de sesión", manage=False)
+        balance.frame.grid(row=0, column=1, sticky="nsew")
+        self._balance_panel = balance
+        body = balance.body
+        self.balance_body = body
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+        self.intervention_hold = tk.Frame(body, bg=PANEL)
+        self.intervention_hold.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.action_hold = tk.Frame(body, bg=PANEL)
+        self.action_hold.grid(row=0, column=1, sticky="nsew")
+        self.intervention = InterventionPanel(tk, self.intervention_hold)
+        self.action_bars = ActionBars(tk, self.action_hold)
+
     # -- axes are built from what the model was actually asked ---------------
     def _ensure_axes(self, names):
         """One row per typed question the decision carries.
@@ -1115,6 +1240,12 @@ class Dashboard:
         player = snapshot.player
         episode = snapshot.episode
         max_health = max(1, int(getattr(player, "max_health", 100) or 100))
+        self._max_health = max_health
+        self._vitals_health.append(player.health)
+        self._vitals_ammo.append(min(player.ammo, 100))
+        self._vitals_marks.append(
+            bool(decision is not None and decision.assistance_events)
+        )
         critical = player.health <= int(max_health * 0.35)
         self.health.set(
             player.health, max_health,
@@ -1170,6 +1301,7 @@ class Dashboard:
         if decision is not None:
             self._account(decision)
         self._update_counters()
+        self._update_telemetry(decision)
         self._update_quality(stale, error, critical)
         self._update_axes(decision)
         self._update_guard(decision)
@@ -1348,6 +1480,28 @@ class Dashboard:
         self._cost += float(decision.cost_usd or 0.0)
         self._tokens += int((decision.input_tokens or {}).get("request", 0) or 0)
         self._decisions += 1
+        # Session telemetry, straight from the same decision: how often the guard
+        # acted and with which rule, tokens in/out, confidence per head and the
+        # previous→current controls for the stability line.
+        events = decision.assistance_events or ()
+        self._intervention_hist.append(bool(events))
+        for event in events:
+            self._rule_counts[event.kind] += 1
+        request_tokens = int((decision.input_tokens or {}).get("request", 0) or 0)
+        self._tokens_in.append(request_tokens)
+        usage = (getattr(decision, "response_raw", None) or {}).get("usage") or {}
+        try:
+            self._tokens_out.append(int(usage.get("output_tokens") or 0))
+        except (TypeError, ValueError):
+            self._tokens_out.append(0)
+        for axis, value in (decision.confidence or {}).items():
+            if value is None:
+                continue
+            self._conf_hist.setdefault(
+                axis, deque(maxlen=TELEMETRY_POINTS)
+            ).append(float(value))
+        self._delta_previous = self._applied_controls
+        self._applied_controls = decision.applied_controls
         self._history.appendleft(
             {
                 "n": self._decisions,
@@ -1382,6 +1536,40 @@ class Dashboard:
             label, caption = self._tile_captions[key]
             self._label(f"caption-{key}", label, f"{caption} n={samples}")
         self._label("cost", self.cost_label, f"COSTE ACUMULADO  ${self._cost:.5f}")
+
+    def _update_telemetry(self, decision):
+        """Redraw the session charts from the bounded buffers, on a throttle.
+
+        The loop calls ``update`` every few ticks; the charts only need a few
+        frames a second, so nothing here costs the 60 Hz loop or the worker.
+        """
+
+        now = time.monotonic()
+        changed = self.cache.changed("telemetry-decisions", self._decisions)
+        if not changed and (now - self._telemetry_ts) < TELEMETRY_INTERVAL:
+            return
+        self._telemetry_ts = now
+        p50 = _percentile(self._latencies, 0.50)
+        p95 = _percentile(self._latencies, 0.95)
+        self.latency_spark.render(self._latencies[-TELEMETRY_POINTS:], p50, p95)
+        self.confidence_spark.render(
+            {axis: list(values) for axis, values in self._conf_hist.items()}
+        )
+        self.intervention.render(self._intervention_hist, self._rule_counts)
+        self.action_bars.render(self._movement_counts(), self._interaction_counts())
+        self.vital_trace.render(
+            self._vitals_health, self._vitals_ammo, self._vitals_marks, self._max_health
+        )
+        self.consumption.render(
+            self._tokens_in, self._tokens_out, self._cost, self._decisions
+        )
+        self.policy_delta.render(self._delta_previous, self._applied_controls)
+
+    def _movement_counts(self):
+        return Counter(item["movement"] for item in self._history)
+
+    def _interaction_counts(self):
+        return Counter(item["interaction"] for item in self._history)
 
     # -- event list ----------------------------------------------------------
     def _update_events(self):
